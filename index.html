@@ -8,8 +8,7 @@
 <script>
 (function () {
   var p = new URLSearchParams(location.search).get('page');
-  if (p === 'admin') { location.replace("https://script.google.com/macros/s/AKfycbwDPAECkVr4AIBdcP4IcIjCrW4riUJ3FjDtPyHIHrpxWcA2pbvQnAI-5n0JZfv5NVBdLQ/exec" + location.search); return; }
-  var map = { done: 'done.html', r: 'r.html', my: 'my.html', legal: 'legal.html' };
+  var map = { done: 'done.html', r: 'r.html', my: 'my.html', legal: 'legal.html', admin: 'admin.html' };
   if (p && Object.prototype.hasOwnProperty.call(map, p)) location.replace(map[p] + location.search + location.hash);
 })();
 </script>
