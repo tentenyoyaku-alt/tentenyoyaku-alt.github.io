@@ -370,6 +370,28 @@ var UI = {
   .sum dt { color: var(--mute); }
   .sum dd { margin: 0; font-weight: 700; }
 
+  /* まとめて作る: 日付を何日でも選べるカレンダー（2026-10-28） */
+  .mc-head { display: flex; justify-content: space-between; align-items: center; margin: 4px 0 6px; }
+  .mc-head b { font-family: var(--serif); font-size: 17px; }
+  .mc-nav { appearance: none; border: 1px solid var(--hair); background: var(--white); border-radius: var(--r-s); width: 44px; height: 40px; font-size: 18px; cursor: pointer; }
+  .mc { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .mc .w { text-align: center; font-size: 12px; color: var(--mute); padding: 2px 0; }
+  .mc .w.sat, .mc .d.sat { color: var(--river); } .mc .w.sun, .mc .d.sun { color: var(--ember); }
+  .mc .d { appearance: none; border: 1px solid var(--hair); background: var(--white); border-radius: var(--r-s); min-height: 46px; font: inherit; font-size: 15px; cursor: pointer; padding: 2px 0; line-height: 1.15; }
+  .mc .d small { display: block; font-size: 10px; color: var(--mute); }
+  .mc .d.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .mc .d.on small { color: #fff; }
+  .mc .d:disabled { opacity: .35; cursor: default; }
+  .mc .d.has { background: repeating-linear-gradient(135deg, var(--paper), var(--paper) 4px, var(--white) 4px, var(--white) 8px); }
+  .quick { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+  .selrow { display: grid; grid-template-columns: 6.6em minmax(0, 1fr) auto minmax(0, 1fr) 28px; gap: 6px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--hair); }
+  .selrow input { min-height: 40px; height: 40px; padding: 4px 6px; min-width: 0; width: 100%; }
+  .selrow b { font-size: 14px; }
+  .selrow .x { appearance: none; border: 0; background: transparent; font-size: 20px; cursor: pointer; color: var(--mute); }
+  .tplrow { display: grid; grid-template-columns: 6.6em minmax(0, 1fr) auto minmax(0, 1fr); gap: 6px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--hair); }
+  .tplrow input[type=time] { min-height: 40px; height: 40px; padding: 4px 6px; min-width: 0; width: 100%; }
+  .tplrow .check, .tplrow b { font-size: 14px; white-space: nowrap; }
+
   /* 予約の行 */
   .res { padding: 12px 0; border-bottom: 1px solid var(--hair); display: grid; gap: 4px; }
   .res .name { font-size: 16px; font-weight: 700; }
@@ -644,8 +666,12 @@ var UI = {
     loadEvents(includePast).then(function (res) {
       if (!res.ok) { $('main').innerHTML = notice(res); return; }
       var master = isMaster();
+      var drafts = S.events.filter(function (e) { return e.status === 'DRAFT' && e.date >= todayJst(); }).length;
       $('main').innerHTML = '<div class="row"><h1>開催回</h1><label class="check" style="font-size:13.5px"><input type="checkbox" id="past"' + (includePast ? ' checked' : '') + '> 過去の回も表示</label></div>' +
-        (master ? '<div class="btns"><button type="button" class="btn" id="newEv">＋ 新しい開催回</button><span class="meta">新しい回と複製した回は「未公開」で保存されます。内容を確認してから公開してください。</span></div>'
+        (master ? '<div class="btns"><button type="button" class="btn" id="newEv">＋ 開催日を追加</button>' +
+          (drafts ? '<button type="button" class="btn ghost" id="pubMany">未公開 ' + drafts + '件をまとめて公開</button>' : '') +
+          '<button type="button" class="btn ghost small" id="tplBtn">ひな形（曜日ごとの時間）</button>' +
+          '<span class="meta">日付はいくつでもまとめて選べます。「作ると同時に公開」を選ばなければ「未公開」で保存されます。</span></div>'
           : '<div class="notice info">開催回の作成・変更・公開・中止は主管理者だけができます。</div>') +
         '<div id="evForm"></div><div id="evMsg"></div>' +
         (S.events.length ? S.events.map(function (e) {
@@ -663,7 +689,9 @@ var UI = {
               '</div><div id="pn-' + esc(e.id) + '"></div>' : '') + '</div>';
         }).join('') : '<p class="meta">開催回はまだありません</p>');
       $('past').onchange = function () { eventsTab($('past').checked); };
-      if ($('newEv')) $('newEv').onclick = function () { eventForm(null, $('evForm')); };
+      if ($('newEv')) $('newEv').onclick = function () { bulkPanel(null, includePast); };
+      if ($('pubMany')) $('pubMany').onclick = function () { publishManyPanel(includePast); };
+      if ($('tplBtn')) $('tplBtn').onclick = function () { templatePanel(); };
       var find = function (id) { return S.events.filter(function (e) { return e.id === id; })[0]; };
       each($('main'), 'data-edit', function (id) { eventForm(find(id), $('pn-' + id)); });
       each($('main'), 'data-pub', function (id) { publishPanel(find(id), includePast); });
@@ -671,7 +699,7 @@ var UI = {
         if (!confirm('非公開にすると、新しい予約を受け付けなくなります（すでにある予約はそのままです）。')) return;
         busy(b); admin('api_adminSetEventPublished', id, false).then(function (r) { if (r.ok) { toast('非公開にしました'); eventsTab(includePast); } else { unbusy(b); toast(r.message, true); } });
       });
-      each($('main'), 'data-dup', function (id) { dupPanel(find(id), includePast); });
+      each($('main'), 'data-dup', function (id) { bulkPanel(find(id), includePast); });
       each($('main'), 'data-cancel', function (id) { cancelPanel(find(id)); });
       each($('main'), 'data-refund', function (id) { go('refunds', id); });
     });
@@ -701,26 +729,168 @@ var UI = {
       });
     };
   }
-  /** 複製: 開催条件だけ。予約・受付は写さない。未公開で保存 */
-  function dupPanel(e, includePast) {
+  /* ---------- 開催日をまとめて追加・複製・ひな形・まとめて公開（2026-10-28 ユーザー依頼） ---------- */
+  function loadTpl() {
+    if (S.tpl) return Promise.resolve(S.tpl);
+    return admin('api_adminGetEventTemplate').then(function (r) { if (r.ok) S.tpl = r.data; return S.tpl; });
+  }
+  function dowOf(date) { var p = date.split('-'); return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])).getUTCDay(); }
+  /** その曜日の時間: ひな形に決まった時間があればそれ、無ければ複製元の時間、それも無ければ「ほかの曜日」 */
+  function tplTime(dow, src) {
+    var t = S.tpl && S.tpl.times && S.tpl.times[String(dow)];
+    if (t) return { start: t.start, end: t.end };
+    if (src) return { start: src.start_time, end: src.end_time };
+    return S.tpl && S.tpl.other ? { start: S.tpl.other.start, end: S.tpl.other.end } : { start: '10:00', end: '15:00' };
+  }
+  /** 日付をいくつでも選んで作る（新しい回・複製の両方）。src があれば内容を写す。予約・受付は写さない */
+  function bulkPanel(src, includePast) {
+    loadTpl().then(function () {
+      closePanels();
+      var box = src ? $('pn-' + src.id) : $('evForm');
+      var base = src || S.tpl || {}, today = todayJst(), sel = {}, taken = {};
+      S.events.forEach(function (e) { if (e.status !== 'CANCELLED') taken[e.date] = true; });
+      var y = Number(today.slice(0, 4)), m = Number(today.slice(5, 7));
+      box.innerHTML = '<div class="panel"><h3>' + (src ? 'この回を複製（日付はいくつでも）' : '開催日を追加（日付はいくつでも）') + '</h3>' +
+        '<p class="meta">' + (src ? 'タイトル・定員・料金・補足を写します（予約・受付は写しません）。' : '') +
+          '日付を押すと選べます（もう一度押すと外れます）。時間は曜日のひな形が入り、下で日ごとに変えられます。</p>' +
+        '<div class="field"><label for="b_title">タイトル<span class="req">必須</span></label><input id="b_title" maxlength="60" value="' + esc(base.title) + '"></div>' +
+        '<div class="grid2"><div class="field"><label for="b_cap">定員（人）<span class="req">必須</span></label><input id="b_cap" type="number" min="1" max="200" inputmode="numeric" value="' + esc(base.capacity) + '"></div>' +
+        '<div class="field"><label for="b_price">料金（1人・円）<span class="req">必須</span></label><input id="b_price" type="number" min="100" inputmode="numeric" value="' + esc(base.price) + '"><div class="hint">税込・入場料込み</div></div></div>' +
+        '<div class="field"><label for="b_desc">補足（予約画面に表示）<span class="opt">任意</span></label><input id="b_desc" maxlength="300" value="' + esc(base.description) + '"></div>' +
+        '<div class="mc-head"><button type="button" class="mc-nav" id="mcPrev" aria-label="前の月">‹</button><b id="mcTitle"></b><button type="button" class="mc-nav" id="mcNext" aria-label="次の月">›</button></div>' +
+        '<div class="mc" id="mcGrid"></div>' +
+        '<div class="quick"><button type="button" class="btn ghost small" data-q="6">この月の土曜</button><button type="button" class="btn ghost small" data-q="0">この月の日曜</button>' +
+          '<button type="button" class="btn ghost small" data-q="60">この月の土日</button><button type="button" class="link" id="qClear">選択をすべて外す</button></div>' +
+        '<p class="meta">斜線の日＝すでに回がある日（選べません）</p><div id="selList"></div>' +
+        '<label class="check" style="margin:12px 0"><input type="checkbox" id="b_pub"> 作ると同時に公開する（予約ページにすぐ出ます）</label>' +
+        '<div class="btns"><button type="button" class="btn" id="b_go" disabled>日付を選んでください</button><button type="button" class="btn ghost" id="b_no">やめる</button></div><div id="b_msg"></div></div>';
+      var toggle = function (d, on) {
+        if (on === undefined) on = !sel[d];
+        if (on) sel[d] = sel[d] || tplTime(dowOf(d), src); else delete sel[d];
+      };
+      var list = function () {
+        var ds = Object.keys(sel).sort(), pub = $('b_pub').checked;
+        $('selList').innerHTML = ds.length ? '<h3 style="font-size:15px;margin:12px 0 4px">選んだ日（' + ds.length + '日）</h3>' + ds.map(function (d) {
+          return '<div class="selrow"><b>' + esc(dowLabel(d)) + '</b><input type="time" data-st="' + d + '" value="' + esc(sel[d].start) + '" aria-label="開始">' +
+            '<span>〜</span><input type="time" data-en="' + d + '" value="' + esc(sel[d].end) + '" aria-label="終了"><button type="button" class="x" data-rm="' + d + '" aria-label="外す">×</button></div>';
+        }).join('') : '';
+        Array.prototype.forEach.call($('selList').querySelectorAll('[data-st],[data-en]'), function (i) {
+          i.oninput = function () { var d = i.getAttribute('data-st') || i.getAttribute('data-en'); sel[d][i.hasAttribute('data-st') ? 'start' : 'end'] = i.value; };
+        });
+        each($('selList'), 'data-rm', function (d) { delete sel[d]; render(); });
+        $('b_go').disabled = !ds.length;
+        $('b_go').textContent = ds.length ? ds.length + '日分を作る' + (pub ? '（すぐ公開）' : '（未公開）') : '日付を選んでください';
+      };
+      var render = function () {
+        var ym = y + '-' + (m < 10 ? '0' : '') + m;
+        $('mcTitle').textContent = y + '年' + m + '月';
+        $('mcPrev').disabled = ym <= today.slice(0, 7);
+        $('mcGrid').innerHTML = '日月火水木金土'.split('').map(function (w, i) { return '<div class="w' + (i === 0 ? ' sun' : i === 6 ? ' sat' : '') + '">' + w + '</div>'; }).join('') +
+          UI.monthCells(y, m).map(function (c) {
+            if (!c.date) return '<div></div>';
+            var t = sel[c.date], off = c.date < today || taken[c.date];
+            return '<button type="button" class="d' + (c.dow === 0 ? ' sun' : c.dow === 6 ? ' sat' : '') + (t ? ' on' : '') + (taken[c.date] ? ' has' : '') + '" data-day="' + c.date + '"' + (off ? ' disabled' : '') + '>' +
+              c.day + (t ? '<small>' + esc(t.start) + '</small>' : taken[c.date] ? '<small>回あり</small>' : '') + '</button>';
+          }).join('');
+        each($('mcGrid'), 'data-day', function (d) { toggle(d); render(); });
+        list();
+      };
+      $('mcPrev').onclick = function () { if (--m < 1) { m = 12; y--; } render(); };
+      $('mcNext').onclick = function () { if (++m > 12) { m = 1; y++; } render(); };
+      each(box, 'data-q', function (q) {
+        UI.monthCells(y, m).forEach(function (c) {
+          if (!c.date || c.date < today || taken[c.date]) return;
+          if ((q === '6' && c.dow === 6) || (q === '0' && c.dow === 0) || (q === '60' && (c.dow === 0 || c.dow === 6))) toggle(c.date, true);
+        });
+        render();
+      });
+      $('qClear').onclick = function () { sel = {}; render(); };
+      $('b_pub').onchange = list;
+      $('b_no').onclick = closePanels;
+      $('b_go').onclick = function () {
+        var ds = Object.keys(sel).sort(), pub = $('b_pub').checked;
+        for (var i = 0; i < ds.length; i++) {
+          var t = sel[ds[i]];
+          if (!t.start || !t.end || t.end <= t.start) { $('b_msg').innerHTML = '<div class="notice err">' + esc(dowLabel(ds[i])) + ' の時間を確かめてください（終了は開始より後）。</div>'; return; }
+        }
+        if (pub && !confirm(ds.length + '日分を作って、すぐ公開します（お客様が予約できるようになります）。\n\n' +
+          ds.map(function (d) { return dowLabel(d) + ' ' + sel[d].start + '〜' + sel[d].end; }).join('\n') +
+          '\n\n1人 ' + yen(Number($('b_price').value)) + '・定員 ' + $('b_cap').value + '名')) return;
+        busy($('b_go'), '作っています…');
+        admin('api_adminCreateEvents', { title: $('b_title').value, capacity: $('b_cap').value, price: $('b_price').value, description: $('b_desc').value,
+          publish: pub, sourceId: src ? src.id : '', items: ds.map(function (d) { return { date: d, start_time: sel[d].start, end_time: sel[d].end }; }) }).then(function (r) {
+          if (!r.ok) { unbusy($('b_go')); $('b_msg').innerHTML = notice(r); return; }
+          var sk = r.data.skipped;
+          toast(r.data.created.length + '日分を作りました' + (pub ? '（公開中）' : '（未公開）') + (sk.length ? '・すでに回がある ' + sk.length + '日は作っていません' : ''));
+          eventsTab(includePast);
+        });
+      };
+      render();
+      box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+  /** ひな形: 曜日ごとの時間と、タイトル・定員・料金・補足の初めの値（主管理者） */
+  function templatePanel() {
+    loadTpl().then(function (t) {
+      closePanels();
+      t = t || { times: {}, other: { start: '10:00', end: '15:00' } };
+      var DOW = '日月火水木金土';
+      var row = function (k, label, v, canOff) {
+        var s = v || t.other;
+        return '<div class="tplrow">' + (canOff ? '<label class="check"><input type="checkbox" data-tk="' + k + '"' + (v ? ' checked' : '') + '> ' + label + '</label>' : '<b>' + label + '</b>') +
+          '<input type="time" id="ts-' + k + '" value="' + esc(s.start) + '" aria-label="' + label + 'の開始"><span>〜</span><input type="time" id="te-' + k + '" value="' + esc(s.end) + '" aria-label="' + label + 'の終了"></div>';
+      };
+      $('evForm').innerHTML = '<div class="panel"><h3>開催回のひな形</h3>' +
+        '<p class="meta">「開催日を追加」「複製」で最初に入る値です。曜日にチェックを入れると、その曜日を選んだとき自動でこの時間になります。</p>' +
+        '<div class="field"><label for="t_title">タイトル<span class="req">必須</span></label><input id="t_title" maxlength="60" value="' + esc(t.title) + '"></div>' +
+        '<div class="grid2"><div class="field"><label for="t_cap">定員（人）<span class="req">必須</span></label><input id="t_cap" type="number" min="1" max="200" inputmode="numeric" value="' + esc(t.capacity) + '"></div>' +
+        '<div class="field"><label for="t_price">料金（1人・円）<span class="req">必須</span></label><input id="t_price" type="number" min="100" inputmode="numeric" value="' + esc(t.price) + '"><div class="hint">税込・入場料込み</div></div></div>' +
+        '<div class="field"><label for="t_desc">補足<span class="opt">任意</span></label><input id="t_desc" maxlength="300" value="' + esc(t.description) + '"></div>' +
+        '<h3 style="font-size:15px;margin:14px 0 4px">曜日ごとの時間</h3><p class="meta">チェックした曜日＝決まった時間。チェックしない曜日は「ほかの曜日」の時間になります。</p>' +
+        [6, 0, 1, 2, 3, 4, 5].map(function (k) { return row(String(k), DOW.charAt(k) + '曜日', (t.times || {})[String(k)], true); }).join('') +
+        row('o', 'ほかの曜日', t.other, false) +
+        '<div class="btns"><button type="button" class="btn" id="t_save">ひな形を保存</button><button type="button" class="btn ghost" id="t_no">閉じる</button></div><div id="t_msg"></div></div>';
+      $('t_no').onclick = closePanels;
+      $('t_save').onclick = function () {
+        var times = {};
+        Array.prototype.forEach.call(document.querySelectorAll('[data-tk]'), function (c) {
+          var k = c.getAttribute('data-tk');
+          if (c.checked) times[k] = { start: $('ts-' + k).value, end: $('te-' + k).value };
+        });
+        busy($('t_save'), '保存しています…');
+        admin('api_adminSaveEventTemplate', { title: $('t_title').value, capacity: $('t_cap').value, price: $('t_price').value, description: $('t_desc').value,
+          times: times, other: { start: $('ts-o').value, end: $('te-o').value } }).then(function (r) {
+          if (!r.ok) { unbusy($('t_save')); $('t_msg').innerHTML = notice(r); return; }
+          S.tpl = r.data; toast('ひな形を保存しました'); closePanels();
+        });
+      };
+      $('evForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+  /** 未公開の回をまとめて公開（公開しない回はチェックを外す） */
+  function publishManyPanel(includePast) {
     closePanels();
-    var p = $('pn-' + e.id);
-    p.innerHTML = '<div class="panel"><h3>この回を複製</h3><p class="meta">時間・定員・料金・タイトル・補足だけを写します。予約・受付・中止の情報は写しません。複製した回は「未公開」で保存されます。</p>' +
-      '<div class="field"><label for="dupDate">複製先の開催日<span class="req">必須</span></label><input id="dupDate" type="date" min="' + todayJst() + '"><div class="hint" id="dupDow"></div></div>' +
-      '<div class="btns"><button type="button" class="btn" id="dupGo">複製する（未公開）</button><button type="button" class="btn ghost" id="dupNo">やめる</button></div><div id="dupMsg"></div></div>';
-    p.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    $('dupDate').oninput = function () { $('dupDow').textContent = dowLabel($('dupDate').value) ? '→ ' + dowLabel($('dupDate').value) + ' ' + e.start_time + '〜' + e.end_time : ''; };
-    $('dupNo').onclick = closePanels;
-    $('dupGo').onclick = function () {
-      var d = $('dupDate').value;
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) { $('dupMsg').innerHTML = '<div class="notice err">開催日を選んでください。</div>'; return; }
-      if (d < todayJst()) { $('dupMsg').innerHTML = '<div class="notice err">過ぎた日には複製できません。</div>'; return; }
-      busy($('dupGo'));
-      admin('api_adminDuplicateEvent', e.id, d).then(function (r) {
-        if (!r.ok) { unbusy($('dupGo')); $('dupMsg').innerHTML = notice(r); return; }
-        toast(dowLabel(d) + ' に複製しました（未公開）。内容を確認してから公開してください'); eventsTab(includePast);
+    var drafts = S.events.filter(function (e) { return e.status === 'DRAFT' && e.date >= todayJst(); });
+    $('evForm').innerHTML = '<div class="panel"><h3>未公開の回をまとめて公開</h3>' +
+      '<p class="meta">公開すると予約ページに表示され、お客様が予約・お支払いできるようになります。公開しない回はチェックを外してください。</p>' +
+      drafts.map(function (e) {
+        return '<label class="check" style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--hair)"><input type="checkbox" data-pm="' + esc(e.id) + '" checked>' +
+          '<span>' + eventLine(e) + '<br><span class="meta">1人 ' + yen(e.price) + '・定員 ' + esc(e.capacity) + '名</span></span></label>';
+      }).join('') +
+      '<div class="btns"><button type="button" class="btn" id="pmGo">チェックした回を公開する</button><button type="button" class="btn ghost" id="pmNo">やめる</button></div><div id="pmMsg"></div></div>';
+    $('pmNo').onclick = closePanels;
+    $('pmGo').onclick = function () {
+      var ids = Array.prototype.map.call(document.querySelectorAll('[data-pm]:checked'), function (c) { return c.getAttribute('data-pm'); });
+      if (!ids.length) { $('pmMsg').innerHTML = '<div class="notice err">公開する回にチェックを入れてください。</div>'; return; }
+      busy($('pmGo'), '公開しています…');
+      admin('api_adminPublishEvents', ids).then(function (r) {
+        if (!r.ok) { unbusy($('pmGo')); $('pmMsg').innerHTML = notice(r); return; }
+        var ng = r.data.filter(function (x) { return !x.ok; });
+        toast((r.data.length - ng.length) + '件を公開しました' + (ng.length ? '・' + ng.length + '件は公開できませんでした（' + ng[0].message + '）' : ''), ng.length > 0);
+        eventsTab(includePast);
       });
     };
+    $('evForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
   /** 開催中止: 対象と、お客様に届くことを確かめてから。返金は次の画面で別に確認する */
   function cancelPanel(e) {
