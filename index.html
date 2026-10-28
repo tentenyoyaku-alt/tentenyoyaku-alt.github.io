@@ -283,8 +283,8 @@ var UI = {
       html += '<div class="row-btns">' +
         '<a class="btn ink small" target="_blank" rel="noopener" href="' + e(UI.calendarUrl({
           date: v.date, start: v.start, end: v.end, title: 'テントサウナ Ten.Ten（' + v.number + '）', location: g.venue,
-          details: '予約番号 ' + v.number + '\n持ち物: ' + g.bring.join('・') + '\n地図: ' + g.mapUrl })) + '">Google カレンダーに追加</a>' +
-        UI.mapLink(g) + '</div>';
+          details: '予約番号 ' + v.number + '\n持ち物: ' + g.bring.join('・') + '\n地図: ' + g.mapUrl })) + '">Google カレンダーに追加</a></div>';
+      // 地図は下の「当日のご案内」の場所の行にある（同じボタンを2つ出さない）
     }
     return html;
   },
@@ -371,7 +371,6 @@ var IMG = {
   .pick .p { font-size: 13px; color: var(--ink-2); line-height: 1.45; min-width: 0; }
   .pick .p b { font-family: var(--serif); font-size: 17px; color: var(--ink); }
   .pick .btn { min-height: 48px; min-width: 150px; flex: none; }
-  .pick-row + .pick-row { margin-top: 8px; }
   .pick-rows { display: grid; gap: 8px; width: 100%; }
   .pick-rows .pick-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
   @media (max-width: 719px) {
@@ -417,7 +416,7 @@ var IMG = {
   .cal-d.past { color: #BDB6A9; }
   .cal-d .n { font-family: var(--serif); font-weight: 500; font-size: 17px; }
   .cal-d.today .n { text-decoration: underline; text-underline-offset: 3px; }
-  .cal-d .m { font-size: 10px; font-weight: 700; margin-top: 2px; }
+  .cal-d .m { font-size: 11px; font-weight: 700; margin-top: 2px; }
   button.cal-d { appearance: none; border: 0; border-right: 1px solid var(--hair); border-bottom: 1px solid var(--hair); font: inherit; cursor: pointer; padding: 0; position: relative; }
   /* 予約できる日は川の淡い青（2026-10-28 ユーザー決定・案A）。満席は灰＋打ち消し線、選んだ日は墨 */
   .cal-d.open { color: var(--ink); background: #E3ECEE; }
@@ -460,7 +459,10 @@ var IMG = {
   /* 入力 */
   .chosen { background: var(--white); border: 1px solid var(--hair); border-radius: var(--r-l); padding: 16px 18px; margin: 20px 0 8px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
   .chosen .when { font-family: var(--serif); font-weight: 700; font-size: 19px; line-height: 1.3; }
-  .chosen .link { white-space: nowrap; font-size: 13.5px; flex: none; }
+  .chosen .link { white-space: nowrap; font-size: 14px; flex: none; padding: 12px 0; }
+  /* 戻る（2026-10-28 ユーザーの声） */
+  .back { font-size: 15px; padding: 14px 0 6px; }
+  .field label.check { font-weight: 400; }
   @media (max-width: 400px) { .pay-deadline { font-size: 17px; } }
   .stepper { display: inline-flex; border: 1px solid var(--hair); border-radius: var(--r-s); background: var(--white); overflow: hidden; }
   .stepper button { appearance: none; border: 0; background: transparent; color: var(--ink); width: 52px; height: 48px; font-size: 22px; cursor: pointer; }
@@ -528,6 +530,7 @@ var IMG = {
 
 <section id="formView" class="hidden">
   <div class="wrap">
+    <button type="button" class="link back" id="back">‹ 日にちの選択に戻る</button>
     <ol class="steps" aria-label="ご予約の流れ">
       <li class="done">日にち</li><li class="now" aria-current="step">お客様情報</li><li>お支払い</li><li>完了</li>
     </ol>
@@ -560,6 +563,12 @@ var IMG = {
         <div class="hint">車とバイクの合計は人数までです。</div>
         <label class="check ride"><input type="checkbox" id="noVeh" aria-describedby="e-vehicle"> <span>車・バイクでは来ない（乗り合わせ・送迎・公共交通機関など）</span></label>
         <div class="ferr" id="e-vehicle"></div>
+      </div>
+      <div class="field" id="f-arrival">
+        <label for="arrival">到着の予定<span class="req">必須</span></label>
+        <select id="arrival" required aria-describedby="h-arrival e-arrival"></select>
+        <div class="hint" id="h-arrival">目安で構いません。開始前に着いても大丈夫です（開催時間の中は出入り自由）。</div>
+        <div class="ferr" id="e-arrival"></div>
       </div>
 
       <div class="receipt">
@@ -596,20 +605,13 @@ var IMG = {
         <div class="hint" id="h-phone">当日、連絡が必要なときだけ使います。</div>
         <div class="ferr" id="e-phone"></div>
       </div>
-      <div class="field" id="f-arrival">
-        <label for="arrival">到着の予定<span class="req">必須</span></label>
-        <select id="arrival" required aria-describedby="h-arrival e-arrival"></select>
-        <div class="hint" id="h-arrival">目安で大丈夫です。開始前に着いても大丈夫です（開催時間の中は出入り自由）。</div>
-        <div class="ferr" id="e-arrival"></div>
-      </div>
 
       <div class="policy">
         <h3>キャンセル・返金について</h3>
         <ul class="list muted" id="policy" style="font-size:14px"></ul>
-        <p class="muted" id="links"></p>
       </div>
       <div class="field" id="f-agree">
-        <label class="check"><input type="checkbox" id="agree" aria-describedby="e-agree"> <span>ご利用規約（キャンセル・返金の条件を含む）と、個人情報の取り扱い（予約の管理と当日のご連絡だけに使います）に同意します</span></label>
+        <label class="check"><input type="checkbox" id="agree" aria-describedby="e-agree"> <span><a id="termsA" href="#" target="_blank" rel="noopener">ご利用規約</a>（キャンセル・返金の条件を含む）と、<a id="privacyA" href="#" target="_blank" rel="noopener">個人情報の取り扱い</a>（予約の管理と当日のご連絡だけに使います）に同意します</span></label>
         <div class="ferr" id="e-agree"></div>
       </div>
       <div id="bot" class="hidden" style="margin:12px 0"></div>
@@ -622,17 +624,18 @@ var IMG = {
 
 <section id="payView" class="hidden">
   <div class="wrap">
+    <button type="button" class="link back" id="payBack">‹ 入力を直す</button>
     <ol class="steps" aria-label="ご予約の流れ">
       <li class="done">日にち</li><li class="done">お客様情報</li><li class="now" aria-current="step">お支払い</li><li>完了</li>
     </ol>
-    <h1 style="margin-top:24px">席を仮押さえしました</h1>
+    <h1 style="margin-top:24px">お支払いをお願いします</h1>
     <div class="card">
       <dl class="kv">
         <dt>予約番号</dt><dd class="serif num" id="number" style="font-size:20px"></dd>
         <dt>日時</dt><dd id="payWhen"></dd>
         <dt>お支払い</dt><dd id="payAmount"></dd>
       </dl>
-      <p style="margin:16px 0 0">まだ予約は<b>確定していません</b>。下のボタンからお支払いのページを開き、カード・PayPay などでお支払いを済ませてください。</p>
+      <p style="margin:16px 0 0">席をおさえました。まだ予約は<b>確定していません</b>。下のボタンからお支払いのページを開き、カード・PayPay などでお支払いを済ませてください。</p>
       <p class="pay-deadline" id="payDeadline"></p>
       <a class="btn block" id="payLink" href="#" target="_top">お支払いのページを開く</a>
       <p class="muted" style="margin:14px 0 0">お支払いが済むと予約が確定し、確認メールが届きます。期限を過ぎると仮押さえは自動で解除されます（料金はかかりません）。</p>
@@ -655,12 +658,23 @@ var IMG = {
   var SAVE_KEY = 'tenten_booking_draft';
   var WD = '日月火水木金土';
 
-  function show(id) {
+  /** push: 履歴に積む（スマホの「戻る」で前の画面へ・2026-10-28） */
+  function show(id, push) {
     ['listView', 'formView', 'payView'].forEach(function (v) { $(v).classList.toggle('hidden', v !== id); });
     window.scrollTo(0, 0);
     updatePickBar();
+    if (push) try { history.pushState({ v: id }, ''); } catch (e) { /* 枠の中などで使えないときは積まない */ }
   }
-  /** スマホの下の帯（#pick）: 写真の下の「日にちを選ぶ」が画面の外に出てから出す（同じ役割のボタンが 2 つ見えないように） */
+  function toList() { show('listView'); renderResume(); setTimeout(function () { scrollToEl($('dates')); }, 0); }
+  window.addEventListener('popstate', function (e) {
+    var v = e.state && e.state.v;
+    if (v === 'formView' && chosen) show('formView');
+    else if (v === 'payView' && $('number').textContent) show('payView');
+    else toList();
+  });
+  /** 画面の「戻る」も、履歴があればスマホの「戻る」と同じ動き（履歴を残さない） */
+  function back(from, fallback) { if (history.state && history.state.v === from) history.back(); else fallback(); }
+  /** スマホの下の帯: 写真の下のボタンが見えなくなってから出す */
   function updatePickBar() {
     var heroBtn = $('toDates').getBoundingClientRect();
     $('pick').classList.toggle('off', heroBtn.bottom > 0);
@@ -707,7 +721,7 @@ var IMG = {
         ' aria-pressed="' + (cal.sel === c.date) + '"><span class="n">' + c.day + '</span><span class="m">' + (open ? '予約可' : '満席') + '</span></button>';
     });
     html += '</div><div class="cal-legend"><span><b>予約可</b>＝予約できる日（押すと下に予約のボタンが出ます）</span></div>';
-    // ほかの月の開催（一覧を出さないので、別の月の開催日を見落とさないように）
+    // ほかの月の開催（見落とさないように）
     var months = {};
     events.forEach(function (e) { var o = ym(e.date); if (ymNum(o) !== ymNum(cal)) months[ymNum(o)] = o; });
     var more = Object.keys(months).sort().map(function (k) {
@@ -728,7 +742,7 @@ var IMG = {
         var d = b.getAttribute('data-date');
         cal.sel = cal.sel === d ? '' : d; // もう一度押すと選ぶ前に戻る
         renderCalendar(); renderPick();
-        // 下の帯が変わったことが分かるように、少しだけ色をつける
+        // 帯が変わったと分かるように色をつける
         $('pick').classList.remove('flash'); void $('pick').offsetWidth; $('pick').classList.add('flash');
       };
     });
@@ -736,8 +750,7 @@ var IMG = {
 
   /*
    * ---------- 予約へ進むボタン（#pick・1つだけ） ----------
-   * 日付を選ぶ前: 「日付を選んでください」（スマホは「日にちを選ぶ」でカレンダーへ）
-   * 日付を選んだ後: その日の時間・料金と「この日で予約する」。開催日の一覧は出さない（2026-10-28 ユーザーの声）
+   * 選ぶ前は「日付を選んでください」、選んだ後はその日の時間・料金と「この日で予約する」
    */
   function renderPick() {
     var box = $('pick');
@@ -809,7 +822,7 @@ var IMG = {
     noVeh = cars + bikes === 0 && !!draft.ride;
     updateParty();
     showErr('');
-    show('formView');
+    show('formView', !(history.state && history.state.v === 'formView'));
     Draft.save();
   }
   function updateParty() {
@@ -821,7 +834,7 @@ var IMG = {
     $('total').textContent = yen(chosen.price * party);
     updateVehicles(); // 車・バイクは人数まで
   }
-  /** 札が届いていないとき（古い保存の内容など）だけ、サーバーの Events.arrivalOptions と同じ決まりで作る（開始の1時間前から） */
+  /** 札が届かないときだけ、サーバーの Events.arrivalOptions と同じ決まりで作る */
   function slotsOf(e) {
     var toMin = function (t) { var p = String(t).split(':'); return Number(p[0]) * 60 + Number(p[1]); };
     var pad = function (n) { return (n < 10 ? '0' : '') + n; };
@@ -835,7 +848,7 @@ var IMG = {
       return { value: v, label: (p[1] === '00' ? Number(p[0]) + '時台' : Number(p[0]) + ':' + p[1] + '頃') + (v < e.start_time ? '（開始前）' : '') };
     });
   }
-  /** 到着の予定（プルダウン・1時間ごと・終わる1時間前まで。選びかたはサーバーが回ごとに作る・2026-10-28 ユーザー依頼で札からプルダウンへ） */
+  /** 到着の予定（プルダウン。選びかたはサーバーが回ごとに作る） */
   function renderArrival() {
     var slots = chosen.arrivals && chosen.arrivals.length ? chosen.arrivals : slotsOf(chosen);
     $('arrival').innerHTML = '<option value="">選んでください</option>' + slots.map(function (s) {
@@ -845,8 +858,8 @@ var IMG = {
   $('arrival').onchange = function () { arrival = $('arrival').value; if (arrival) setErr('arrival', ''); Draft.save(); };
 
   /*
-   * ---------- お越しの車両（車・バイク。はじめは車1台）。1台に1人は運転する人がいるので、車とバイクの合計は人数まで ----------
-   * 車もバイクも使わない人は「車・バイクでは来ない」のチェック1つ（2026-10-28 ユーザーの声）。チェック中は台数を 0台 にして押せなくする
+   * ---------- お越しの車両（はじめは車1台・合計は人数まで） ----------
+   * 使わない人はチェック1つ（2026-10-28）。チェック中は 0台 で押せない
    */
   var cars = 1, bikes = 0, noVeh = false;
   function updateVehicles() {
@@ -919,7 +932,8 @@ var IMG = {
     $('err').scrollIntoView({ behavior: 'smooth', block: 'center' }); // ボタンの上に出すので、見える所まで動かす
   }
 
-  $('change').onclick = function () { show('listView'); renderResume(); setTimeout(function () { scrollToEl($('dates')); }, 0); };
+  $('change').onclick = $('back').onclick = function () { back('formView', toList); };
+  $('payBack').onclick = function () { back('payView', function () { show('formView'); }); };
   $('form').onsubmit = function (ev) {
     ev.preventDefault();
     showErr('');
@@ -946,7 +960,7 @@ var IMG = {
       var hm = until.toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' });
       $('payDeadline').innerHTML = (d.payWithinMinutes || 30) + '分以内にお支払いください<br><span class="muted" style="font-family:var(--sans);font-weight:400">期限 ' + esc(hm) + ' まで</span>';
       $('payLink').href = d.checkoutUrl;
-      show('payView');
+      show('payView', true);
     });
   };
 
@@ -1030,7 +1044,7 @@ var IMG = {
     var g = cfg.guide;
     UI.chrome(cfg);
     Bot.start(cfg.turnstileSiteKey);
-    // 場所は下の「場所・アクセス・持ち物」と同じ書き方（点検 C5）。地図のボタンは場所のすぐ横（2026-10-28 ユーザー回答）
+    // 地図は場所のすぐ横（2026-10-28 ユーザー回答）
     $('facts').innerHTML = '<div class="f-place"><div><b>場所</b>' + esc(g.venue) + '</div>' + UI.mapLink(g) + '</div>' +
       [['アクセス', g.access[0]], ['駐車場', g.access[1].replace('駐車場', '')]]
         .map(function (f) { return '<div><b>' + esc(f[0]) + '</b>' + esc(f[1]) + '</div>'; }).join('');
@@ -1043,11 +1057,8 @@ var IMG = {
     $('rules').innerHTML = g.rules.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('');
     $('termsLink').href = cfg.termsUrl;
     $('policy').innerHTML = cfg.cancelPolicy.map(function (p) { return '<li>' + esc(p) + '</li>'; }).join('');
-    var links = [];
-    if (cfg.termsUrl) links.push('<a href="' + esc(cfg.termsUrl) + '" target="_blank" rel="noopener">ご利用規約</a>');
-    if (cfg.privacyUrl) links.push('<a href="' + esc(cfg.privacyUrl) + '" target="_blank" rel="noopener">個人情報の取り扱い</a>');
-    if (cfg.lawUrl) links.push('<a href="' + esc(cfg.lawUrl) + '" target="_blank" rel="noopener">特定商取引法に基づく表記</a>');
-    $('links').innerHTML = links.join('・');
+    // 規約・個人情報は同意の文の中のリンク（特定商取引法の表記はページの下）
+    $('termsA').href = cfg.termsUrl; $('privacyA').href = cfg.privacyUrl;
   }
 </script>
 </body>
