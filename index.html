@@ -357,7 +357,7 @@ var IMG = {
 <style>
   /* 予約画面だけの見た目（共通の見た目は assets/web/theme.css・方針は docs/DESIGN_DIRECTIONS.md） */
   .hero { margin: 0; padding: 0; }
-  .hero img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #DDE3E1; }
+  .hero img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; background: #DDE3E1; }
   .hero-text { padding: 28px 20px 8px; }
   .eyebrow { font-size: 12.5px; letter-spacing: .12em; color: var(--mute); margin: 0 0 10px; }
   .hero h1 { font-size: 34px; line-height: 1.3; margin: 0 0 14px; }
@@ -674,10 +674,10 @@ var IMG = {
   });
   /** 画面の「戻る」も、履歴があればスマホの「戻る」と同じ動き（履歴を残さない） */
   function back(from, fallback) { if (history.state && history.state.v === from) history.back(); else fallback(); }
-  /** スマホの下の帯: 写真の下のボタンが見えなくなってから出す */
+  /** スマホの下の帯: 写真の下のボタンが画面に全部見えている間だけ出さない（画面の下で切れているときも出す） */
   function updatePickBar() {
-    var heroBtn = $('toDates').getBoundingClientRect();
-    $('pick').classList.toggle('off', heroBtn.bottom > 0);
+    var b = $('toDates').getBoundingClientRect();
+    $('pick').classList.toggle('off', b.top >= 0 && b.bottom <= innerHeight);
   }
   window.addEventListener('scroll', updatePickBar, { passive: true });
   function scrollToEl(el) { if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
@@ -806,7 +806,7 @@ var IMG = {
   function choose(e, draft) {
     chosen = e;
     $('chosen').innerHTML = '<div class="when">' + esc(e.dateLabel) + '<br><span class="num">' + esc(e.start_time) + '〜' + esc(e.end_time) + '</span></div>' +
-      '<div class="muted">' + esc(e.title) + '</div><div class="price num">1名 <b>' + yen(e.price) + '</b><span class="muted">（入場料込み）</span></div>';
+      '<div class="muted">' + esc(e.title) + (e.description ? '<br>' + esc(e.description) : '') + '</div><div class="price num">1名 <b>' + yen(e.price) + '</b><span class="muted">（入場料込み）</span></div>';
     draft = draft || Draft.get() || {};
     party = Math.min(Math.max(Number(draft.party) || 1, 1), cfg.maxParty);
     // お名前・連絡先は、日にちを変えても入れ直さなくてよいように残す
@@ -939,7 +939,7 @@ var IMG = {
     showErr('');
     Draft.save(); // 自動入力（オートフィル）で入れた値も残す
     if (!checkVehicles()) { scrollToEl($('f-vehicle')); return; }
-    var bad = FIELDS.concat(['arrival', 'agree']).filter(function (f) { return !check(f); });
+    var bad = ['arrival'].concat(FIELDS, ['agree']).filter(function (f) { return !check(f); });
     if (bad.length) { scrollToEl($('f-' + bad[0])); if (bad[0] !== 'agree') $(bad[0]).focus(); return; }
     var btn = $('submit');
     btn.disabled = true; btn.innerHTML = '<span class="spinner" aria-hidden="true" style="border-color:rgba(255,255,255,.35);border-top-color:#fff"></span>席を確保しています…';
@@ -1016,10 +1016,8 @@ var IMG = {
   }
 
   /**
-   * 開くのを速くする（2026-10-28）:
-   * 1) 前に見た設定と開催日（この端末に保存・個人情報なし）があれば、すぐ出す
-   * 2) 設定と開催日は1回の問い合わせ（api_getHome）。外のページでは、ページを読み込み始めた時点で問い合わせを始めている（HOME_PREFETCH）
-   * 3) 最新が届いたら入れ替える。予約のときは必ずサーバーで最新の空席を確かめるので、前の内容で満席の回に予約が入ることはない
+   * 開くのを速くする（2026-10-28）: 前に見た設定と開催日（端末に保存・個人情報なし）をすぐ出し、
+   * 最新（api_getHome・外のページは HOME_PREFETCH で先に問い合わせ）が届いたら入れ替える。空席は予約のときにサーバーで確かめる
    */
   var HOME_KEY = 'tenten:home:v3'; // v3: ご利用の条件を変えた（前の保存を出さない・2026-10-28）
   var today0 = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
