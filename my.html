@@ -253,6 +253,7 @@ var UI = {
       '<dt>場所</dt><dd>' + e(v.venue) + '</dd>' +
       '<dt>人数</dt><dd>' + e(v.partySize) + '名</dd>' +
       (v.arrivalLabel ? '<dt>到着の予定</dt><dd>' + e(v.arrivalLabel) + '<span class="muted">（目安）</span></dd>' : '') +
+      (v.vehicleLabel ? '<dt>車両</dt><dd>' + e(v.vehicleLabel) + '</dd>' : '') +
       '<dt>お支払い</dt><dd>' + UI.yen(v.amount) + '<span class="muted">（1名 ' + UI.yen(v.unitPrice) + '）</span></dd>' +
       '<dt>代表者</dt><dd>' + e(v.name) + ' 様</dd>' +
       (v.emailMasked ? '<dt>メール</dt><dd>' + e(v.emailMasked) + '</dd>' : '') + '</dl>';
