@@ -229,15 +229,18 @@ var UI = {
     }
     return cells;
   },
-  /** 当日のご案内（場所・アクセス・持ち物）。罫線の表 */
+  /** 地図のボタン（どの画面も同じ言葉「Google マップで見る」・2026-10-28 ユーザーの声） */
+  mapLink: function (g, cls) {
+    return '<a class="btn ghost small ' + (cls || '') + '" href="' + UI.esc(g.mapUrl) + '" target="_blank" rel="noopener">Google マップで見る</a>';
+  },
+  /** 当日のご案内（場所・アクセス・持ち物）。罫線の表。地図は「場所」のすぐ下（2026-10-28 ユーザーの声「場所の近くに」） */
   guideHtml: function (g, opt) {
     opt = opt || {};
     var e = UI.esc;
     return '<section class="guide"><h3>' + (opt.title || '当日のご案内') + '</h3>' +
-      '<dl class="kv"><dt>場所</dt><dd>' + e(g.venue) + '</dd>' +
+      '<dl class="kv"><dt>場所</dt><dd>' + e(g.venue) + '<div style="margin-top:8px">' + UI.mapLink(g) + '</div></dd>' +
       '<dt>アクセス</dt><dd>' + g.access.map(e).join('<br>') + '</dd>' +
       '<dt>持ち物</dt><dd>' + g.bring.map(e).join('・') + '<div class="muted" style="margin-top:4px">' + g.notes.map(e).join('／') + '</div></dd></dl>' +
-      '<a class="btn ghost small block" href="' + e(g.mapUrl) + '" target="_blank" rel="noopener">Google マップで開く</a>' +
       '</section>';
   },
   /** 予約1件の内容（予約確認ページ・メールでの確認ページで共通）。v は Access.view の形 */
@@ -262,7 +265,7 @@ var UI = {
         '<a class="btn ink small" target="_blank" rel="noopener" href="' + e(UI.calendarUrl({
           date: v.date, start: v.start, end: v.end, title: 'テントサウナ Ten.Ten（' + v.number + '）', location: g.venue,
           details: '予約番号 ' + v.number + '\n持ち物: ' + g.bring.join('・') + '\n地図: ' + g.mapUrl })) + '">Google カレンダーに追加</a>' +
-        '<a class="btn ghost small" href="' + e(g.mapUrl) + '" target="_blank" rel="noopener">地図を開く</a></div>';
+        UI.mapLink(g) + '</div>';
     }
     return html;
   },
