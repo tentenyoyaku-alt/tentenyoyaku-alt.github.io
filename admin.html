@@ -580,7 +580,25 @@ var UI = {
   function busy(b, text) { b.disabled = true; b.dataset.label = b.textContent; b.textContent = text || '処理しています…'; }
   function unbusy(b) { b.disabled = false; if (b.dataset.label) b.textContent = b.dataset.label; }
   function isMaster() { return S.me && S.me.role === 'MASTER'; }
-  function store(t) { try { if (t) sessionStorage.setItem('adm', t); else sessionStorage.removeItem('adm'); } catch (e) {} }
+  /**
+   * ログインはこの端末に12時間残す（タブを閉じても入り直さなくてよい・2026-10-28 ユーザー決定）。
+   * サーバーのログインも12時間で切れる（Config.ADMIN_SESSION_HOURS）。「ログアウト」で端末からも消える
+   */
+  var KEEP_MS = 12 * 3600000;
+  function store(t) {
+    try {
+      sessionStorage.removeItem('adm'); // 前の形（タブの中だけ）は使わない
+      if (t) localStorage.setItem('adm', JSON.stringify({ t: t, exp: Date.now() + KEEP_MS })); else localStorage.removeItem('adm');
+    } catch (e) {}
+  }
+  function loadSaved() {
+    try {
+      var o = JSON.parse(localStorage.getItem('adm') || 'null');
+      if (o && o.t && o.exp > Date.now()) return o.t;
+      localStorage.removeItem('adm');
+      return sessionStorage.getItem('adm') || '';
+    } catch (e) { return ''; }
+  }
   function logoutLocal(why) {
     S.token = ''; store('');
     $('appView').classList.add('hidden'); $('loginView').classList.remove('hidden');
@@ -1067,7 +1085,9 @@ var UI = {
     EVENT_CANCELLED: '開催中止', NO_PAYMENT_ID: '支払いの記録が見つからない', PARTIAL_REFUND_EXISTS: 'Stripe で一部だけ返金済み（Stripe の画面で確認）',
     charge_disputed: 'お客様がカード会社に異議を申し立て中', NETWORK: 'Stripe につながらなかった（もう一度お試しください）' };
   function codeL(c) { c = String(c || ''); var k = c.replace(/^STRIPE_/, ''); return CODE_L[k] ? esc(CODE_L[k]) + '<span class="meta">（' + esc(c) + '）</span>' : esc(c); }
+  var RES = {}; // 表示中の予約（id → 予約）。連絡先の修正・キャンセルの小さな画面で使う
   function resRow(r, extra) {
+    RES[r.id] = r;
     var tel = String(r.phone || '').replace(/[^\d+]/g, '');
     return '<div class="res" data-name="' + esc(searchKey(r)) + '">' +
       '<div><span class="name">' + esc(r.name) + '</span><span class="ppl num">' + esc(r.party_size) + '名</span>' +
@@ -1081,7 +1101,87 @@ var UI = {
         (r.refund_error ? '<b style="color:var(--bad)">返金のエラー: ' + codeL(r.refund_error) + '</b><br>' : '') +
         (r.note ? 'メモ: ' + codeL(r.note) + '<br>' : '') +
         (r.confirm_mail_status === 'FAILED' ? '<b style="color:var(--bad)">確認メール: 送信失敗</b>' : '') + '</div>' : '') +
-      (extra ? '<div class="wide">' + extra + '</div>' : '') + '</div>';
+      (extra ? '<div class="wide">' + extra + '</div>' : '') + '<div class="wide" id="ap-' + esc(r.id) + '"></div></div>';
+  }
+
+  /*
+   * ---------- 予約ごとの操作（2026-10-28 夜 ユーザー決定「全部反映」） ----------
+   * 連絡先を直す（一般管理者も）・管理者からのキャンセル（主管理者・返金なし／全額返金）・要確認の確定／対応済み（主管理者）
+   */
+  function resActions(r) {
+    var b = [];
+    if (r.status === 'CONFIRMED' || r.status === 'CANCEL_REQUESTED') {
+      b.push('<button type="button" class="btn ghost small" data-resend="' + esc(r.id) + '" data-mail="' + esc(r.email) + '">確認メールを再送</button>');
+    }
+    if (r.status !== 'EXPIRED') b.push('<button type="button" class="btn ghost small" data-contact="' + esc(r.id) + '">連絡先を直す</button>');
+    if (isMaster() && (r.status === 'CONFIRMED' || r.status === 'CANCEL_REQUESTED')) {
+      b.push('<button type="button" class="btn danger-ghost small" data-acancel="' + esc(r.id) + '">キャンセルする…</button>');
+    }
+    if (r.status === 'NEEDS_ATTENTION' && r.payment_status === 'PAID') {
+      b.push(isMaster() ? '<button type="button" class="btn small" data-aconfirm="' + esc(r.id) + '">確定にする</button>' +
+        '<button type="button" class="btn ghost small" data-arefund="' + esc(r.id) + '">返金へ</button>' +
+        '<button type="button" class="btn ghost small" data-aresolve="' + esc(r.id) + '">対応済みにする…</button>'
+        : '<span class="meta">確定・返金・対応済みは主管理者が行います。</span>');
+    }
+    return b.length ? '<div class="btns" style="margin-top:4px">' + b.join('') + '</div>' : '';
+  }
+  /** 予約の行の操作を動かす。reload: 終わったあとに一覧を読み直す */
+  function bindResActions(root, reload) {
+    bindResend(root);
+    var panel = function (id, html) { var p = $('ap-' + id); Array.prototype.forEach.call(root.querySelectorAll('[id^="ap-"]'), function (x) { if (x !== p) x.innerHTML = ''; }); p.innerHTML = html; p.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); return p; };
+    var done = function (b, r, text) { if (!r.ok) { unbusy(b); toast(r.message, true); return false; } toast(text); refreshCounts(); reload(); return true; };
+    each(root, 'data-contact', function (id) {
+      var r = RES[id], f = function (k, label, v, type) { return '<div class="field"><label for="ct_' + k + '">' + label + '</label><input id="ct_' + k + '" ' + (type || '') + ' value="' + esc(v || '') + '"></div>'; };
+      var p = panel(id, '<div class="panel"><h3>連絡先を直す</h3>' + f('name', 'お名前', r.name) + f('kana', 'フリガナ', r.kana) +
+        f('email', 'メールアドレス', r.email, 'type="email" inputmode="email"') + f('phone', '電話番号', r.phone, 'type="tel" inputmode="tel"') +
+        '<p class="meta">メールアドレスを直したら、「確認メールを再送」で新しいアドレスに予約確認のリンクを送れます。</p>' +
+        '<div class="btns"><button type="button" class="btn" id="ct_save">保存</button><button type="button" class="btn ghost" id="ct_close">閉じる</button></div></div>');
+      $('ct_close').onclick = function () { p.innerHTML = ''; };
+      $('ct_save').onclick = function () {
+        var b = $('ct_save'); busy(b, '保存しています…');
+        admin('api_adminUpdateContact', id, { name: $('ct_name').value, kana: $('ct_kana').value, email: $('ct_email').value, phone: $('ct_phone').value }).then(function (res) {
+          done(b, res, res.ok ? (res.data.changed.length ? '連絡先を直しました' + (res.data.emailChanged ? '（新しいアドレスへは「確認メールを再送」で送れます）' : '') : '変更はありませんでした') : '');
+        });
+      };
+    });
+    each(root, 'data-acancel', function (id) {
+      var r = RES[id];
+      var p = panel(id, '<div class="panel danger"><h3>この予約をキャンセルする</h3><p class="meta">' + esc(r.name) + ' 様・' + esc(r.party_size) + '名・' + esc(r.number) + '・' + esc(r.eventLabel) + '・' + yen(r.amount) + '</p>' +
+        '<div class="field"><label class="check"><input type="radio" name="acRf" value="0" checked> <span><b>返金なし</b>（お客様のご都合・規約どおり）</span></label>' +
+        '<label class="check" style="margin-top:8px"><input type="radio" name="acRf" value="1"> <span><b>全額返金</b>（主催者の都合など）。返金は次の「返金」の画面で内容を確かめてから実行します</span></label></div>' +
+        '<div class="field"><label for="acWhy">理由<span class="opt">任意・お客様へのメールに載ります</span></label><input id="acWhy" maxlength="200"></div>' +
+        '<p class="meta">席が空き、お客様にキャンセルのメールが届きます。元に戻せません。</p>' +
+        '<div class="btns"><button type="button" class="btn danger" id="acGo">キャンセルする</button><button type="button" class="btn ghost" id="acClose">やめる</button></div></div>');
+      $('acClose').onclick = function () { p.innerHTML = ''; };
+      $('acGo').onclick = function () {
+        var refund = (root.querySelector('input[name=acRf]:checked') || {}).value === '1';
+        if (!confirm(r.name + ' 様（' + r.party_size + '名・' + r.number + '）の予約をキャンセルします。\n' + (refund ? '全額返金（' + yen(r.amount) + '）します。この後、返金の画面に進みます。' : '返金はありません。') + '\nお客様にメールが届きます。元に戻せません。')) return;
+        var b = $('acGo'); busy(b, 'キャンセルしています…');
+        admin('api_adminCancelReservation', id, refund, $('acWhy').value).then(function (res) {
+          if (!res.ok) { unbusy(b); toast(res.message, true); return; }
+          toast('キャンセルしました' + (refund ? '。続けて返金してください' : '（返金なし）')); refreshCounts();
+          if (refund) go('refunds', id); else reload();
+        });
+      };
+    });
+    each(root, 'data-aconfirm', function (id, b) {
+      var r = RES[id];
+      if (!confirm(r.name + ' 様（' + r.party_size + '名・' + r.number + '）の予約を確定にします。\n' + (r.note ? '要確認の理由: ' + (CODE_L[r.note] || r.note) + '\n' : '') + '席が足りるときだけ確定し、お客様に予約確定のメールが届きます。')) return;
+      busy(b, '確定しています…');
+      admin('api_adminConfirmAttention', id).then(function (res) { done(b, res, res.ok ? '確定しました（確認メール: ' + (MAIL_ST[res.data.mail] || res.data.mail) + '）' : ''); });
+    });
+    each(root, 'data-arefund', function (id) { go('refunds', id); });
+    each(root, 'data-aresolve', function (id) {
+      var p = panel(id, '<div class="panel"><h3>対応済みにする</h3><p class="meta">お客様と話がついた・Stripe の画面で別に返金した など。予約は「キャンセル済み」になり、要確認の件数から消えます。お客様にメールは届きません。</p>' +
+        '<div class="field"><label for="arMemo">対応のメモ<span class="req">必須</span></label><input id="arMemo" maxlength="200" placeholder="例: 電話で説明し、Stripe で返金済み"></div>' +
+        '<div class="btns"><button type="button" class="btn" id="arGo">対応済みにする</button><button type="button" class="btn ghost" id="arClose">やめる</button></div></div>');
+      $('arClose').onclick = function () { p.innerHTML = ''; };
+      $('arGo').onclick = function () {
+        if (!$('arMemo').value.trim()) { toast('対応のメモを入れてください', true); $('arMemo').focus(); return; }
+        var b = $('arGo'); busy(b);
+        admin('api_adminResolveAttention', id, $('arMemo').value).then(function (res) { done(b, res, '対応済みにしました'); });
+      };
+    });
   }
   var THEAD = '<div class="thead"><span>お名前・人数・予約番号・到着</span><span>状態・回・金額</span><span>連絡先</span></div>';
   /** 絞り込みの文字: 名前・予約番号・フリガナ（ひらがなで入れてもカタカナに当たるよう、カタカナに直したものも入れる） */
@@ -1132,10 +1232,9 @@ var UI = {
         var active = rows.filter(function (r) { return r.status === 'CONFIRMED' || r.status === 'CANCEL_REQUESTED'; });
         var ppl = active.reduce(function (n, r) { return n + Number(r.party_size); }, 0);
         $('resSum').innerHTML = (all ? '全部の回からの検索結果 ' : '') + rows.length + '件（うち確定・申請中 ' + active.length + '組・' + ppl + '名）';
-        $('resList').innerHTML = rows.map(function (r) {
-          return resRow(r, (r.status === 'CONFIRMED' || r.status === 'CANCEL_REQUESTED') ? '<button type="button" class="btn ghost small" data-resend="' + esc(r.id) + '" data-mail="' + esc(r.email) + '">確認メールを再送</button>' : '');
-        }).join('') || '<p class="meta">予約はありません</p>';
-        bindResend($('resList'));
+        $('resList').innerHTML = rows.map(function (r) { return resRow(r, resActions(r)); }).join('') || '<p class="meta">予約はありません</p>';
+        // 操作のあとは同じ表示（この回／全部の回の検索）を読み直す
+        bindResActions($('resList'), function () { if (allMode) $('qAll').onclick(); else byEvent(); });
         filter();
       };
       var filter = function () {
@@ -1282,9 +1381,12 @@ var UI = {
       var cancelled = S.events.filter(function (e) { return e.status === 'CANCELLED' && (e.toRefund || e.id === eventId); }).reverse();
       admin('api_adminIssues').then(function (iss) {
         var attention = iss.ok ? iss.data.attention.filter(function (r) { return r.payment_status === 'PAID'; }) : [];
+        // 管理者が「全額返金」でキャンセルした予約（返金待ち・失敗）も1件ずつ対象にする（2026-10-28 夜）
+        var adminCancels = iss.ok ? iss.data.refunds.filter(function (r) { return r.status === 'CANCELLED' && r.payment_status === 'PAID' && r.refund_status !== 'PENDING'; }) : [];
+        var one = function (label) { return function (r) { return '<option value="R:' + esc(r.id) + '"' + (r.id === eventId ? ' selected' : '') + '>' + label + ': ' + esc(r.number) + ' ' + esc(r.name) + '（' + yen(r.amount) + '）</option>'; }; };
         var opts = cancelled.map(function (e) { return '<option value="E:' + esc(e.id) + '"' + (e.id === eventId ? ' selected' : '') + '>中止: ' + eventLine(e) + '（返金待ち ' + e.toRefund + '件）</option>'; })
-          .concat(attention.map(function (r) { return '<option value="R:' + esc(r.id) + '">要確認: ' + esc(r.number) + ' ' + esc(r.name) + '</option>'; }));
-        $('main').innerHTML = '<h1>全額返金</h1><div class="notice info">開催中止にした回（または支払いの要確認の予約）だけが対象です。<b>「返金内容を確認」ではまだお金は動きません。</b>確認した内容で「返金する」と入力してから実行します。返金済みの予約は対象から外れるので、二重には返金されません。</div>' +
+          .concat(adminCancels.map(one('キャンセル')), attention.map(one('要確認')));
+        $('main').innerHTML = '<h1>全額返金</h1><div class="notice info">開催中止にした回・管理者が「全額返金」でキャンセルした予約・支払いの要確認の予約が対象です。<b>「返金内容を確認」ではまだお金は動きません。</b>確認した内容で「返金する」と入力してから実行します。返金済みの予約は対象から外れるので、二重には返金されません。</div>' +
           (opts.length ? '<div class="field"><label for="rfT">対象</label><select id="rfT">' + opts.join('') + '</select></div><button type="button" class="btn" id="rfPrev">返金内容を確認</button>' : '<p class="meta">返金の対象はありません</p>') +
           '<div id="rfBox"></div>';
         if (!opts.length) return;
@@ -1356,9 +1458,9 @@ var UI = {
       var mark = function (at) { return seen(at) ? ' style="color:var(--mute)"' : ''; };
       var seenTag = function (at) { return seen(at) ? '<br><span class="chip">確認済み</span>' : ''; };
       $('main').innerHTML = '<h1>要対応</h1>' +
-        sec('支払いの要確認', d.attention.length, '支払い済みですが自動で確定できなかった予約です。お客様に連絡し、必要なら主管理者が「返金」から返金します。', d.attention.map(function (r) { return resRow(r); }).join('')) +
+        sec('支払いの要確認', d.attention.length, '支払い済みですが自動で確定できなかった予約です。お客様に連絡し、主管理者が「確定にする」（席が足りるとき）・「返金へ」・「対応済みにする」のどれかで片づけます。', d.attention.map(function (r) { return resRow(r, resActions(r)); }).join('')) +
         sec('返金が終わっていない予約', d.refunds.length, '返金待ち・手続き中・失敗。' + (isMaster() ? '「返金」から確認して実行します。' : '主管理者が対応します。'), d.refunds.map(function (r) { return resRow(r); }).join('')) +
-        sec('メールが届いたか分からない予約', d.stuckMails.length, '送信中に処理が止まりました。お客様に確認するか、確認メールを再送してください。', d.stuckMails.map(function (r) { return resRow(r, '<button type="button" class="link" data-resend="' + esc(r.id) + '" style="font-size:13px">確認メールを再送</button>'); }).join('')) +
+        sec('メールが届いたか分からない予約', d.stuckMails.length, '送信中に処理が止まりました。お客様に確認するか、確認メールを再送してください。', d.stuckMails.map(function (r) { return resRow(r, '<button type="button" class="btn ghost small" data-resend="' + esc(r.id) + '" data-mail="' + esc(r.email) + '">確認メールを再送</button>'); }).join('')) +
         ackBox +
         sec('メールの送信失敗', d.mailFailures.length, '新しい順・最大50件。', '<div class="scroll"><table><tr><th>日時</th><th>予約番号</th><th>種類</th><th>宛先</th><th>理由</th><th></th></tr>' +
           d.mailFailures.map(function (m) {
@@ -1367,7 +1469,7 @@ var UI = {
           }).join('') + '</table></div>') +
         sec('処理エラー', d.errors.length, '新しい順・最大50件。', '<div class="scroll"><table><tr><th>日時</th><th>場所</th><th>内容</th><th>対象</th></tr>' +
           d.errors.map(function (x) { return '<tr' + mark(x.at) + '><td class="num">' + esc(jst(x.at)) + seenTag(x.at) + '</td><td>' + esc(x.where) + '</td><td class="wrap">' + esc(x.code) + '<br><span class="meta">' + esc(x.message) + '</span></td><td>' + esc(x.ref) + '</td></tr>'; }).join('') + '</table></div>');
-      bindResend($('main'));
+      bindResActions($('main'), issuesTab);
       if ($('ackBtn')) $('ackBtn').onclick = function () {
         if (!confirm('今までのメール送信失敗・処理エラーを「確認済み」にします。\nホームの件数から外れます（記録は消えません）。\n「支払いの要確認」「返金」は対象外です。')) return;
         busy($('ackBtn'));
@@ -1456,8 +1558,7 @@ var UI = {
   google.script.url.getLocation(function (loc) {
     // ログインのリンクの鍵は1回だけ使える。読んだらすぐ URL から消す（タブにも残さない・点検 M2）
     var p = UI.hideParams(loc.parameter || {}, ['login']);
-    var saved = '';
-    try { saved = sessionStorage.getItem('adm') || ''; } catch (e) { saved = ''; }
+    var saved = loadSaved();
     if (p.login) {
       // 新しいログインのリンクを優先する。使用済み（再読み込み）なら、保存してあるログインで続ける
       call('api_adminExchangeLogin', p.login).then(function (res) {
