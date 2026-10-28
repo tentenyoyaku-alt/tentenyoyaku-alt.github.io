@@ -248,15 +248,18 @@ var UI = {
     }
     return cells;
   },
-  /** 当日のご案内（場所・アクセス・持ち物）。罫線の表 */
+  /** 地図のボタン（どの画面も同じ言葉「Google マップで見る」・2026-10-28 ユーザーの声） */
+  mapLink: function (g, cls) {
+    return '<a class="btn ghost small ' + (cls || '') + '" href="' + UI.esc(g.mapUrl) + '" target="_blank" rel="noopener">Google マップで見る</a>';
+  },
+  /** 当日のご案内（場所・アクセス・持ち物）。罫線の表。地図は「場所」のすぐ下（2026-10-28 ユーザーの声「場所の近くに」） */
   guideHtml: function (g, opt) {
     opt = opt || {};
     var e = UI.esc;
     return '<section class="guide"><h3>' + (opt.title || '当日のご案内') + '</h3>' +
-      '<dl class="kv"><dt>場所</dt><dd>' + e(g.venue) + '</dd>' +
+      '<dl class="kv"><dt>場所</dt><dd>' + e(g.venue) + '<div style="margin-top:8px">' + UI.mapLink(g) + '</div></dd>' +
       '<dt>アクセス</dt><dd>' + g.access.map(e).join('<br>') + '</dd>' +
       '<dt>持ち物</dt><dd>' + g.bring.map(e).join('・') + '<div class="muted" style="margin-top:4px">' + g.notes.map(e).join('／') + '</div></dd></dl>' +
-      '<a class="btn ghost small block" href="' + e(g.mapUrl) + '" target="_blank" rel="noopener">Google マップで開く</a>' +
       '</section>';
   },
   /** 予約1件の内容（予約確認ページ・メールでの確認ページで共通）。v は Access.view の形 */
@@ -281,7 +284,7 @@ var UI = {
         '<a class="btn ink small" target="_blank" rel="noopener" href="' + e(UI.calendarUrl({
           date: v.date, start: v.start, end: v.end, title: 'テントサウナ Ten.Ten（' + v.number + '）', location: g.venue,
           details: '予約番号 ' + v.number + '\n持ち物: ' + g.bring.join('・') + '\n地図: ' + g.mapUrl })) + '">Google カレンダーに追加</a>' +
-        '<a class="btn ghost small" href="' + e(g.mapUrl) + '" target="_blank" rel="noopener">地図を開く</a></div>';
+        UI.mapLink(g) + '</div>';
     }
     return html;
   },
@@ -363,16 +366,34 @@ var IMG = {
   .hero-act { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
   .hero-act .btn { flex: 1 1 auto; max-width: 240px; min-height: 56px; font-size: 17px; }
   .hero-act > a:not(.btn) { flex: none; font-size: 14.5px; }
-  /* スマホでは、下に常に「予約する」（開催日の一覧へ）。入力の画面では出さない */
-  .cta-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 8; background: rgba(246,243,236,.96); border-top: 1px solid var(--hair); padding: 10px 20px calc(10px + env(safe-area-inset-bottom)); display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-  .cta-bar .p { font-size: 13px; color: var(--ink-2); line-height: 1.35; }
-  .cta-bar .p b { font-family: var(--serif); font-size: 17px; }
-  .cta-bar .btn { min-height: 48px; min-width: 150px; flex: none; }
-  @media (min-width: 720px) { .cta-bar { display: none; } }
-  @media (max-width: 719px) { #listView ~ .site-footer { padding-bottom: 120px; } }
-  .facts { display: flex; margin: 28px 20px 0; padding: 14px 0; border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); }
-  .facts div { flex: 1; font-size: 13px; line-height: 1.5; padding: 0 10px; border-left: 1px solid var(--hair); color: var(--ink-2); }
-  .facts div:first-child { border-left: 0; padding-left: 0; }
+  /* 予約へ進むボタンは #pick の1つだけ（2026-10-28 ユーザーの声）。スマホは下に固定・広い画面はカレンダーの下 */
+  .pick { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .pick .p { font-size: 13px; color: var(--ink-2); line-height: 1.45; min-width: 0; }
+  .pick .p b { font-family: var(--serif); font-size: 17px; color: var(--ink); }
+  .pick .btn { min-height: 48px; min-width: 150px; flex: none; }
+  .pick-row + .pick-row { margin-top: 8px; }
+  .pick-rows { display: grid; gap: 8px; width: 100%; }
+  .pick-rows .pick-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  @media (max-width: 719px) {
+    .pick { position: fixed; left: 0; right: 0; bottom: 0; z-index: 8; background: rgba(246,243,236,.97); border-top: 1px solid var(--hair); padding: 10px 20px calc(10px + env(safe-area-inset-bottom)); box-shadow: 0 -4px 16px rgba(27,31,35,.06); }
+    .pick.off { display: none; }
+    .pick .btn { min-width: 136px; }
+    #listView ~ .site-footer { padding-bottom: 120px; }
+  }
+  @media (min-width: 720px) {
+    .pick { background: var(--white); border: 1px solid var(--hair); border-radius: var(--r-l); padding: 16px 20px; margin-top: -8px; }
+    .pick .to-cal { display: none; } /* 広い画面ではカレンダーがすぐ上にある */
+  }
+  .pick.flash { animation: pickFlash .6s ease-out; }
+  @keyframes pickFlash { from { background: #E3ECEE; } }
+  @media (prefers-reduced-motion: reduce) { .pick.flash { animation: none; } }
+  /* 場所の概要（写真の下）。場所は1行まるごと＋地図、アクセス・駐車場は2つ並べる */
+  .facts { display: grid; grid-template-columns: 1fr 1fr; margin: 28px 20px 0; border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); }
+  .facts > div { font-size: 13px; line-height: 1.5; padding: 12px 10px; color: var(--ink-2); }
+  .facts > div + div + div { border-left: 1px solid var(--hair); }
+  .facts > div:nth-child(2) { padding-left: 0; }
+  .facts .f-place { grid-column: 1 / -1; padding: 12px 0; border-bottom: 1px solid var(--hair); display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .facts .f-place .btn { flex: none; }
   .facts b { display: block; font-size: 11px; color: var(--mute); font-weight: 400; letter-spacing: .06em; margin-bottom: 2px; }
   @media (min-width: 720px) {
     .hero { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: center; max-width: 1040px; margin: 36px auto 0; padding: 0 20px; }
@@ -410,35 +431,18 @@ var IMG = {
   .cal-d.sel .n, .cal-d.sel .m { color: #fff !important; }
   .cal-legend { display: flex; gap: 6px 16px; flex-wrap: wrap; font-size: 12px; color: var(--mute); margin-top: 10px; }
   .cal-legend b { color: var(--river); font-weight: 700; }
+  .cal-more { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 10px; font-size: 14px; }
   /* お越しの車両（車・バイクの台数を横に並べる。狭い画面では縦に） */
   .veh { display: flex; flex-wrap: wrap; gap: 10px 20px; }
   .veh-row { display: flex; align-items: center; gap: 10px; }
   .veh-name { min-width: 3.2em; font-weight: 700; }
   .veh .stepper button { width: 44px; }
   .veh .stepper output { min-width: 56px; }
-  .ride { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--hair); border-radius: var(--r-s); background: var(--white); display: grid; gap: 10px; }
-  .ride-q { font-weight: 700; font-size: 14.5px; }
+  .ride { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--hair); border-radius: var(--r-s); background: var(--white); }
   .field.bad .ride { border-color: var(--bad); }
-
-  /* 開催日: 時刻表のような行 */
-  .month { font-family: var(--serif); font-size: 15px; font-weight: 700; color: var(--mute); margin: 24px 0 0; padding-bottom: 6px; }
-  .ev { display: grid; grid-template-columns: 62px minmax(0, 1fr) auto; gap: 2px 14px; align-items: center; padding: 16px 0; border-top: 1px solid var(--hair); }
-  .ev:last-child { border-bottom: 1px solid var(--hair); }
-  .ev-date { font-family: var(--serif); line-height: 1; }
-  .ev-date .d { font-size: 30px; font-weight: 700; display: block; }
-  .ev-date .w { font-size: 12.5px; font-family: var(--sans); color: var(--mute); display: block; margin-top: 4px; }
-  .ev-date.sat .d, .ev-date.sat .w { color: var(--sat); } .ev-date.sun .d, .ev-date.sun .w { color: var(--sun); }
-  .ev-time { font-weight: 700; font-size: 17px; }
-  .ev-sub { font-size: 12.5px; color: var(--mute); word-break: keep-all; overflow-wrap: anywhere; margin-top: 2px; }
-  .ev-price { font-size: 14px; color: var(--ink-2); white-space: nowrap; }
-  .ev-price b { font-family: var(--serif); font-size: 18px; color: var(--ink); }
+  .veh.off .stepper { opacity: .45; }
   .chosen .price { font-size: 14px; margin-top: 2px; white-space: nowrap; }
   .chosen .price b { font-family: var(--serif); font-size: 18px; }
-  .ev-act .btn { min-height: 44px; padding: 0 14px; font-size: 14px; white-space: nowrap; }
-  .ev.is-full .ev-time, .ev.is-full .ev-price, .ev.is-full .ev-date .d { color: var(--mute); }
-  .day-filter { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 8px 0 12px; }
-  .day-filter b { font-family: var(--serif); font-size: 17px; }
-  @media (max-width: 400px) { .ev { grid-template-columns: 54px minmax(0, 1fr) auto; gap: 2px 10px; } .ev-date .d { font-size: 27px; } }
 
   /* はじめての方へ */
   /* 1枚目は大きく、2・3枚目は並べる（同じ大きさの3枚を避ける） */
@@ -479,10 +483,10 @@ var IMG = {
   <figure class="hero">
     <img id="heroImg" alt="会場の目の前を流れる能勢の川。澄んだ水と岩">
     <div class="hero-text">
-      <p class="eyebrow">大阪・能勢 ── 川沿いのテントサウナ</p>
+      <p class="eyebrow">川沿いのテントサウナ</p>
       <h1>水風呂は、<br>目の前の川。</h1>
       <p class="lead">薪ストーブで温まったら、そのまま川へ。能勢の空の下で、ゆっくり外気浴。</p>
-      <div class="hero-act"><a href="#first" id="toFirst">はじめての方へ</a><a class="btn" href="#dates" id="toDates">予約する</a></div>
+      <div class="hero-act"><a href="#first" id="toFirst">はじめての方へ</a><a class="btn" href="#dates" id="toDates">日にちを選ぶ</a></div>
     </div>
   </figure>
   <div class="facts" id="facts"></div>
@@ -492,9 +496,10 @@ var IMG = {
 
     <section class="section">
       <h2 id="dates">開催日を選ぶ</h2>
-      <p class="muted">料金は1人あたり・税込・入場料込み。ネット予約は時間内のフリータイムです。</p>
+      <p class="muted">予約できるのはフリータイム（開催時間の中は出入り自由）です。料金は1人あたり・税込・入場料込み。</p>
       <div id="cal" class="cal hidden" aria-label="開催日のカレンダー"></div>
       <div id="events" aria-live="polite"></div>
+      <div id="pick" class="pick hidden" aria-live="polite"></div>
     </section>
 
     <section class="section">
@@ -510,7 +515,7 @@ var IMG = {
 
     <section class="section">
       <h2 id="lookup">ご予約の確認・キャンセル</h2>
-      <p class="muted">予約したときのメールアドレスを入れてください。結果をそのアドレスにメールでお送りします（ご予約があれば、確認用のリンク・30分間有効）。</p>
+      <p class="muted">予約したときのメールアドレスに、予約の確認・キャンセル申請ができるページのリンク（30分間有効）を送ります。</p>
       <div class="field">
         <label for="myEmail">メールアドレス</label>
         <input id="myEmail" type="email" autocomplete="email" inputmode="email" maxlength="254" placeholder="例）tenten@example.com">
@@ -552,12 +557,8 @@ var IMG = {
               <button type="button" id="bikeMinus" aria-label="バイクを1台へらす">−</button><output id="bikeOut" aria-live="polite">0台</output><button type="button" id="bikePlus" aria-label="バイクを1台ふやす">＋</button>
             </div></div>
         </div>
-        <div class="hint">車とバイクの合計は人数までです。車もバイクも使わない場合は、どちらも 0台 にしてください。</div>
-        <div id="rideBox" class="ride hidden" role="radiogroup" aria-labelledby="rideQ">
-          <div class="ride-q" id="rideQ">車もバイクも使わない場合、どうやってお越しになりますか？<span class="req">必須</span></div>
-          <label class="check"><input type="radio" name="ride" value="carpool"> ほかの組の車に乗り合わせ</label>
-          <label class="check"><input type="radio" name="ride" value="dropoff"> 家族・知人に送ってもらう</label>
-        </div>
+        <div class="hint">車とバイクの合計は人数までです。</div>
+        <label class="check ride"><input type="checkbox" id="noVeh" aria-describedby="e-vehicle"> <span>車・バイクでは来ない（乗り合わせ・送迎・公共交通機関など）</span></label>
         <div class="ferr" id="e-vehicle"></div>
       </div>
 
@@ -598,7 +599,7 @@ var IMG = {
       <div class="field" id="f-arrival">
         <label for="arrival">到着の予定<span class="req">必須</span></label>
         <select id="arrival" required aria-describedby="h-arrival e-arrival"></select>
-        <div class="hint" id="h-arrival">目安で大丈夫です（時間内のフリータイムなので、この時間に着かなくても利用できます）。</div>
+        <div class="hint" id="h-arrival">目安で大丈夫です。開始前に着いても大丈夫です（開催時間の中は出入り自由）。</div>
         <div class="ferr" id="e-arrival"></div>
       </div>
 
@@ -614,7 +615,6 @@ var IMG = {
       <div id="bot" class="hidden" style="margin:12px 0"></div>
       <div class="notice err hidden" id="err" role="alert"></div>
       <button type="submit" class="btn block" id="submit">お支払いへ進む</button>
-      <button type="button" class="btn ghost block" id="back">開催日の一覧へ戻る</button>
       <p class="muted center" style="margin-top:14px">入力の内容は、このタブを閉じると消えます。</p>
     </form>
   </div>
@@ -642,7 +642,6 @@ var IMG = {
 </section>
 
 <footer class="site-footer" id="siteFooter"></footer>
-<div class="cta-bar hidden" id="ctaBar"><div class="p" id="ctaText"></div><a class="btn" href="#dates" id="ctaGo">予約する</a></div>
 
 <script>
   var cfg = {}, events = [], chosen = null, party = 1, arrival = '';
@@ -659,15 +658,14 @@ var IMG = {
   function show(id) {
     ['listView', 'formView', 'payView'].forEach(function (v) { $(v).classList.toggle('hidden', v !== id); });
     window.scrollTo(0, 0);
-    updateCtaBar();
+    updatePickBar();
   }
-  /** 下の「予約する」: 開催日の一覧の画面で、最初の「予約する」ボタンが画面の外に出てから出す（同じボタンが 2 つ見えないように） */
-  function updateCtaBar() {
-    var listOn = !$('listView').classList.contains('hidden');
+  /** スマホの下の帯（#pick）: 写真の下の「日にちを選ぶ」が画面の外に出てから出す（同じ役割のボタンが 2 つ見えないように） */
+  function updatePickBar() {
     var heroBtn = $('toDates').getBoundingClientRect();
-    $('ctaBar').classList.toggle('hidden', !listOn || !events.length || heroBtn.bottom > 0);
+    $('pick').classList.toggle('off', heroBtn.bottom > 0);
   }
-  window.addEventListener('scroll', updateCtaBar, { passive: true });
+  window.addEventListener('scroll', updatePickBar, { passive: true });
   function scrollToEl(el) { if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 
   /* ---------- 入力の一時保存（このタブの中だけ。タブを閉じると消える） ---------- */
@@ -675,7 +673,7 @@ var IMG = {
     get: function () { try { return JSON.parse(sessionStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { return null; } },
     save: function () {
       if (!chosen) return;
-      var d = { eventId: chosen.id, party: party, arrival: arrival, cars: cars, bikes: bikes, ride: ride };
+      var d = { eventId: chosen.id, party: party, arrival: arrival, cars: cars, bikes: bikes, ride: noVeh ? 'none' : '' };
       FIELDS.forEach(function (f) { d[f] = $(f).value; });
       try { sessionStorage.setItem(SAVE_KEY, JSON.stringify(d)); } catch (e) {}
     },
@@ -708,54 +706,73 @@ var IMG = {
       html += '<button type="button" class="' + cls + (open ? ' open' : ' full') + (cal.sel === c.date ? ' sel' : '') + '" data-date="' + c.date + '" aria-label="' + esc(label) + '"' +
         ' aria-pressed="' + (cal.sel === c.date) + '"><span class="n">' + c.day + '</span><span class="m">' + (open ? '予約可' : '満席') + '</span></button>';
     });
-    html += '</div><div class="cal-legend"><span><b>予約可</b>＝予約できる日</span><span>打ち消し線＝満席</span><span>日付を押すと、その日の回だけを表示</span></div>';
+    html += '</div><div class="cal-legend"><span><b>予約可</b>＝予約できる日（押すと下に予約のボタンが出ます）</span></div>';
+    // ほかの月の開催（一覧を出さないので、別の月の開催日を見落とさないように）
+    var months = {};
+    events.forEach(function (e) { var o = ym(e.date); if (ymNum(o) !== ymNum(cal)) months[ymNum(o)] = o; });
+    var more = Object.keys(months).sort().map(function (k) {
+      var o = months[k];
+      return '<button type="button" class="link" data-ym="' + k + '">' + (Number(k) < ymNum(cal) ? '‹ ' : '') + o.m + '月の開催日を見る' + (Number(k) > ymNum(cal) ? ' ›' : '') + '</button>';
+    }).join('');
+    if (more) html += '<div class="cal-more">' + more + '</div>';
     $('cal').innerHTML = html;
     $('cal').classList.remove('hidden');
     var move = function (n) { var t = cal.y * 12 + (cal.m - 1) + n; cal.y = Math.floor(t / 12); cal.m = t % 12 + 1; renderCalendar(); };
     $('calPrev').onclick = function () { move(-1); };
     $('calNext').onclick = function () { move(1); };
+    Array.prototype.forEach.call($('cal').querySelectorAll('[data-ym]'), function (b) {
+      b.onclick = function () { move(Number(b.getAttribute('data-ym')) - ymNum(cal)); };
+    });
     Array.prototype.forEach.call($('cal').querySelectorAll('[data-date]'), function (b) {
       b.onclick = function () {
         var d = b.getAttribute('data-date');
-        cal.sel = cal.sel === d ? '' : d; // もう一度押すと全部の日に戻る
-        renderCalendar(); renderEvents();
-        if (cal.sel) setTimeout(function () { scrollToEl($('events')); }, 0);
+        cal.sel = cal.sel === d ? '' : d; // もう一度押すと選ぶ前に戻る
+        renderCalendar(); renderPick();
+        // 下の帯が変わったことが分かるように、少しだけ色をつける
+        $('pick').classList.remove('flash'); void $('pick').offsetWidth; $('pick').classList.add('flash');
       };
     });
   }
 
-  /* ---------- 開催日の一覧（時刻表のような行） ---------- */
-  function renderEvents() {
+  /*
+   * ---------- 予約へ進むボタン（#pick・1つだけ） ----------
+   * 日付を選ぶ前: 「日付を選んでください」（スマホは「日にちを選ぶ」でカレンダーへ）
+   * 日付を選んだ後: その日の時間・料金と「この日で予約する」。開催日の一覧は出さない（2026-10-28 ユーザーの声）
+   */
+  function renderPick() {
+    var box = $('pick');
     if (!events.length) {
       $('events').innerHTML = '<p>いま予約を受け付けている日はありません。</p><p class="muted">次の開催日は Instagram でお知らせします。</p>';
+      box.classList.add('hidden');
       return;
     }
-    if (cal.sel && !events.some(function (e) { return e.date === cal.sel; })) cal.sel = ''; // 選んだ日が一覧から消えたとき
-    var html = '', month = '';
-    if (cal.sel) {
-      var c = cal.sel.split('-');
-      html += '<div class="day-filter"><b>' + Number(c[1]) + '月' + Number(c[2]) + '日(' + WD.charAt(dow(cal.sel)) + ')の回</b>' +
-        '<button type="button" class="link" id="showAll">すべての日を見る</button></div>';
+    $('events').innerHTML = '';
+    box.classList.remove('hidden');
+    if (cal.sel && !events.some(function (e) { return e.date === cal.sel; })) cal.sel = ''; // 選んだ日が受付を終えたとき
+    var html;
+    if (!cal.sel) {
+      var next = events.filter(function (e) { return !e.full; })[0];
+      html = '<div class="p"><b>日付を選んでください</b>' + (next ? '<br>次の開催 ' + esc(next.dateLabel) : '') + '</div>' +
+        '<a class="btn ghost to-cal" href="#dates" id="pickToCal">日にちを選ぶ</a>';
+    } else {
+      var list = [];
+      events.forEach(function (e, i) { if (e.date === cal.sel) list.push({ e: e, i: i }); });
+      var row = function (x, many) {
+        var e = x.e;
+        // 狭い画面では日付と時刻の間で折り返す（時刻の途中で切らない）
+        return '<div class="p">' + (many ? '' : '<b>' + esc(e.dateLabel) + '</b> ') + '<b class="num" style="white-space:nowrap">' + esc(e.start_time) + '〜' + esc(e.end_time) + '</b><br>' +
+          (e.full ? '満席です（ほかの日をお選びください）' : '1名 ' + yen(e.price) + '（入場料込み）') + '</div>' +
+          (e.full ? '' : '<button type="button" class="btn" data-i="' + x.i + '" aria-label="' + esc(e.dateLabel + ' ' + e.start_time) + 'の回を予約する">' + (many ? 'この時間で予約する' : 'この日で予約する') + '</button>');
+      };
+      html = list.length === 1 ? row(list[0], false)
+        : '<div class="pick-rows"><div class="p"><b>' + esc(list[0].e.dateLabel) + '</b></div>' + list.map(function (x) { return '<div class="pick-row">' + row(x, true) + '</div>'; }).join('') + '</div>';
     }
-    events.forEach(function (e, i) {
-      if (cal.sel && e.date !== cal.sel) return;
-      var p = e.date.split('-'), m = Number(p[0]) + '年' + Number(p[1]) + '月';
-      if (cal.sel) m = month; // 1日だけのときは月の見出しを出さない
-      if (m !== month) { month = m; html += '<h3 class="month">' + esc(m) + '</h3>'; }
-      var w = dow(e.date);
-      html += '<div class="ev' + (e.full ? ' is-full' : '') + '">' +
-        '<div class="ev-date' + (w === 6 ? ' sat' : w === 0 ? ' sun' : '') + '"><span class="d num">' + Number(p[2]) + '</span><span class="w">' + WD.charAt(w) + '曜日</span></div>' +
-        '<div><div class="ev-time num">' + esc(e.start_time) + '〜' + esc(e.end_time) + '</div>' +
-        '<div class="ev-price">1名 <b class="num">' + yen(e.price) + '</b> 入場料込み</div>' +
-        '<div class="ev-sub">' + esc(e.title) + (e.description ? '<br>' + esc(e.description) : '') + '</div></div>' +
-        '<div class="ev-act">' + (e.full ? '<span class="chip full">満席</span>'
-          : '<button type="button" class="btn" data-i="' + i + '" aria-label="' + esc(e.dateLabel + ' ' + e.start_time) + 'を予約する">予約する</button>') + '</div></div>';
-    });
-    $('events').innerHTML = html;
-    Array.prototype.forEach.call($('events').querySelectorAll('button[data-i]'), function (b) {
+    box.innerHTML = html;
+    Array.prototype.forEach.call(box.querySelectorAll('button[data-i]'), function (b) {
       b.onclick = function () { choose(events[Number(b.getAttribute('data-i'))]); };
     });
-    if ($('showAll')) $('showAll').onclick = function () { cal.sel = ''; renderCalendar(); renderEvents(); scrollToEl($('cal')); };
+    if ($('pickToCal')) $('pickToCal').onclick = function (ev) { ev.preventDefault(); scrollToEl($('dates')); };
+    updatePickBar();
     renderResume();
   }
   /** 決済ページから戻ってきたときなど、入力の途中のご予約があれば続きから */
@@ -788,7 +805,8 @@ var IMG = {
     renderArrival();
     if (typeof draft.cars === 'number') cars = draft.cars;
     if (typeof draft.bikes === 'number') bikes = draft.bikes;
-    if (draft.ride === 'carpool' || draft.ride === 'dropoff') ride = draft.ride;
+    // 前のページ（選択肢2つ）で保存した carpool/dropoff も「車・バイクでは来ない」として続ける
+    noVeh = cars + bikes === 0 && !!draft.ride;
     updateParty();
     showErr('');
     show('formView');
@@ -803,14 +821,19 @@ var IMG = {
     $('total').textContent = yen(chosen.price * party);
     updateVehicles(); // 車・バイクは人数まで
   }
-  /** 札が届いていないとき（古い保存の内容など）だけ、サーバーの Events.arrivalSlots と同じ決まりで作る */
+  /** 札が届いていないとき（古い保存の内容など）だけ、サーバーの Events.arrivalOptions と同じ決まりで作る（開始の1時間前から） */
   function slotsOf(e) {
     var toMin = function (t) { var p = String(t).split(':'); return Number(p[0]) * 60 + Number(p[1]); };
     var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    var hm = function (t) { return pad(Math.floor(t / 60)) + ':' + pad(t % 60); };
     var s = toMin(e.start_time), end = toMin(e.end_time), out = [];
-    for (var t = s; t <= end - 60; t += 60) out.push(pad(Math.floor(t / 60)) + ':' + pad(t % 60));
-    if (!out.length) out.push(e.start_time);
-    return out.map(function (v) { var p = v.split(':'); return { value: v, label: p[1] === '00' ? Number(p[0]) + '時台' : Number(p[0]) + ':' + p[1] + '頃' }; });
+    if (s >= 60) out.push(hm(s - 60));
+    for (var t = s; t <= end - 60; t += 60) out.push(hm(t));
+    if (out.length === (s >= 60 ? 1 : 0)) out.push(e.start_time);
+    return out.map(function (v) {
+      var p = v.split(':');
+      return { value: v, label: (p[1] === '00' ? Number(p[0]) + '時台' : Number(p[0]) + ':' + p[1] + '頃') + (v < e.start_time ? '（開始前）' : '') };
+    });
   }
   /** 到着の予定（プルダウン・1時間ごと・終わる1時間前まで。選びかたはサーバーが回ごとに作る・2026-10-28 ユーザー依頼で札からプルダウンへ） */
   function renderArrival() {
@@ -821,30 +844,34 @@ var IMG = {
   }
   $('arrival').onchange = function () { arrival = $('arrival').value; if (arrival) setErr('arrival', ''); Draft.save(); };
 
-  /* ---------- お越しの車両（車・バイク。はじめは車1台）。1台に1人は運転する人がいるので、車とバイクの合計は人数まで ---------- */
-  var cars = 1, bikes = 0, ride = '';
+  /*
+   * ---------- お越しの車両（車・バイク。はじめは車1台）。1台に1人は運転する人がいるので、車とバイクの合計は人数まで ----------
+   * 車もバイクも使わない人は「車・バイクでは来ない」のチェック1つ（2026-10-28 ユーザーの声）。チェック中は台数を 0台 にして押せなくする
+   */
+  var cars = 1, bikes = 0, noVeh = false;
   function updateVehicles() {
+    if (noVeh) { cars = 0; bikes = 0; }
     // 人数を減らして合計が人数を超えたら、バイクから減らす（車を残す）
     while (cars + bikes > party) { if (bikes > 0) bikes--; else cars--; }
     var full = cars + bikes >= party;
     $('carOut').textContent = cars + '台'; $('bikeOut').textContent = bikes + '台';
-    $('carMinus').disabled = cars <= 0; $('carPlus').disabled = full;
-    $('bikeMinus').disabled = bikes <= 0; $('bikePlus').disabled = full;
-    // 車もバイクも0台のときだけ、来かたを聞く
-    var none = cars + bikes === 0;
-    $('rideBox').classList.toggle('hidden', !none);
-    Array.prototype.forEach.call(document.querySelectorAll('input[name=ride]'), function (r) { r.checked = none && r.value === ride; });
-    if (!none) setVehErr('');
+    $('carMinus').disabled = noVeh || cars <= 0; $('carPlus').disabled = noVeh || full;
+    $('bikeMinus').disabled = noVeh || bikes <= 0; $('bikePlus').disabled = noVeh || full;
+    document.querySelector('#f-vehicle .veh').classList.toggle('off', noVeh);
+    $('noVeh').checked = noVeh;
+    if (noVeh || cars + bikes > 0) setVehErr('');
   }
   function setVehErr(msg) { $('f-vehicle').classList.toggle('bad', !!msg); $('e-vehicle').textContent = msg; }
   function checkVehicles() {
-    var msg = cars + bikes === 0 && !ride ? '車もバイクも使わない場合の、お越しの方法を選んでください。' : '';
+    var msg = cars + bikes === 0 && !noVeh ? '車・バイクの台数を入れるか、「車・バイクでは来ない」にチェックしてください。' : '';
     setVehErr(msg);
     return !msg;
   }
-  Array.prototype.forEach.call(document.querySelectorAll('input[name=ride]'), function (r) {
-    r.onchange = function () { ride = r.value; setVehErr(''); Draft.save(); };
-  });
+  $('noVeh').onchange = function () {
+    noVeh = $('noVeh').checked;
+    if (!noVeh && cars + bikes === 0) cars = 1; // チェックを外したら、はじめの「車1台」に戻す
+    updateVehicles(); Draft.save();
+  };
   $('carMinus').onclick = function () { if (cars > 0) { cars--; updateVehicles(); Draft.save(); } };
   $('carPlus').onclick = function () { if (cars + bikes < party) { cars++; updateVehicles(); Draft.save(); } };
   $('bikeMinus').onclick = function () { if (bikes > 0) { bikes--; updateVehicles(); Draft.save(); } };
@@ -892,7 +919,7 @@ var IMG = {
     $('err').scrollIntoView({ behavior: 'smooth', block: 'center' }); // ボタンの上に出すので、見える所まで動かす
   }
 
-  $('change').onclick = $('back').onclick = function () { show('listView'); renderResume(); setTimeout(function () { scrollToEl($('dates')); }, 0); };
+  $('change').onclick = function () { show('listView'); renderResume(); setTimeout(function () { scrollToEl($('dates')); }, 0); };
   $('form').onsubmit = function (ev) {
     ev.preventDefault();
     showErr('');
@@ -905,7 +932,7 @@ var IMG = {
     var botToken = Bot.token();
     if (Bot.on && !botToken) { btn.disabled = false; btn.textContent = 'お支払いへ進む'; showErr('「人間であることの確認」を済ませてください。'); return; }
     UI.call('api_startBooking', {
-      eventId: chosen.id, partySize: party, name: $('name').value, kana: $('kana').value, arrival: arrival, cars: cars, bikes: bikes, ride: cars + bikes === 0 ? ride : '',
+      eventId: chosen.id, partySize: party, name: $('name').value, kana: $('kana').value, arrival: arrival, cars: cars, bikes: bikes, ride: cars + bikes === 0 && noVeh ? 'none' : '',
       email: $('email').value, emailConfirm: $('email2').value, phone: $('phone').value, agree: true, botToken: botToken
     }).then(function (res) {
       btn.disabled = false; btn.textContent = 'お支払いへ進む';
@@ -958,19 +985,13 @@ var IMG = {
   };
 
   /* ---------- 最初の表示 ---------- */
-  $('toDates').onclick = $('ctaGo').onclick = function (e) { e.preventDefault(); scrollToEl($('dates')); };
+  $('toDates').onclick = function (e) { e.preventDefault(); scrollToEl($('dates')); };
   $('toFirst').onclick = function (e) { e.preventDefault(); scrollToEl($('first')); };
   if (window.IMG) $('heroImg').src = IMG.hero_river;
   $('events').innerHTML = UI.loading('開催日を読み込んでいます…');
 
   function applyEvents(list) {
-    events = list; renderCalendar(); renderEvents();
-    // 下の「予約する」: いちばん近い回の日付と料金を添える（開催が無ければ出さない）
-    if (events.length) {
-      var open = events.filter(function (e) { return !e.full; })[0] || events[0];
-      $('ctaText').innerHTML = '次の開催 <b>' + esc(open.dateLabel) + '</b><br>1名 ' + yen(open.price) + '・入場料込み';
-      updateCtaBar();
-    }
+    events = list; renderCalendar(); renderPick();
   }
   /** 開催日だけを取り直す（満席・受付終了のあと） */
   function load() {
@@ -1009,14 +1030,16 @@ var IMG = {
     var g = cfg.guide;
     UI.chrome(cfg);
     Bot.start(cfg.turnstileSiteKey);
-    $('facts').innerHTML = [['場所', '大阪府能勢町'], ['アクセス', g.access[0]], ['駐車場', g.access[1].replace('駐車場', '')]]
-      .map(function (f) { return '<div><b>' + esc(f[0]) + '</b>' + esc(f[1]) + '</div>'; }).join('');
+    // 場所は下の「場所・アクセス・持ち物」と同じ書き方（点検 C5）。地図のボタンは場所のすぐ横（2026-10-28 ユーザー回答）
+    $('facts').innerHTML = '<div class="f-place"><div><b>場所</b>' + esc(g.venue) + '</div>' + UI.mapLink(g) + '</div>' +
+      [['アクセス', g.access[0]], ['駐車場', g.access[1].replace('駐車場', '')]]
+        .map(function (f) { return '<div><b>' + esc(f[0]) + '</b>' + esc(f[1]) + '</div>'; }).join('');
     var IMG_KEY = { fire: 'f_fire', river: 'f_river', tent: 'f_tent' };
     $('features').innerHTML = g.features.map(function (f) {
       var src = window.IMG && IMG[IMG_KEY[f.key]];
       return '<div class="feature">' + (src ? '<img src="' + src + '" alt="">' : '') + '<h3>' + esc(f.title) + '</h3><p>' + esc(f.text) + '</p></div>';
     }).join('');
-    $('guide').innerHTML = UI.guideHtml(g, { title: 'アクセス・持ち物' });
+    $('guide').innerHTML = UI.guideHtml(g, { title: '場所・アクセス・持ち物' });
     $('rules').innerHTML = g.rules.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('');
     $('termsLink').href = cfg.termsUrl;
     $('policy').innerHTML = cfg.cancelPolicy.map(function (p) { return '<li>' + esc(p) + '</li>'; }).join('');
