@@ -271,6 +271,7 @@ var UI = {
       '<dt>内容</dt><dd>' + e(v.eventTitle) + '</dd>' +
       '<dt>場所</dt><dd>' + e(v.venue) + '</dd>' +
       '<dt>人数</dt><dd>' + e(v.partySize) + '名</dd>' +
+      (v.arrivalLabel ? '<dt>到着の予定</dt><dd>' + e(v.arrivalLabel) + '<span class="muted">（目安）</span></dd>' : '') +
       '<dt>お支払い</dt><dd>' + UI.yen(v.amount) + '<span class="muted">（1名 ' + UI.yen(v.unitPrice) + '）</span></dd>' +
       '<dt>代表者</dt><dd>' + e(v.name) + ' 様</dd>' +
       (v.emailMasked ? '<dt>メール</dt><dd>' + e(v.emailMasked) + '</dd>' : '') + '</dl>';
@@ -396,16 +397,24 @@ var IMG = {
   .cal-d.today .n { text-decoration: underline; text-underline-offset: 3px; }
   .cal-d .m { font-size: 10px; font-weight: 700; margin-top: 2px; }
   button.cal-d { appearance: none; border: 0; border-right: 1px solid var(--hair); border-bottom: 1px solid var(--hair); font: inherit; cursor: pointer; padding: 0; position: relative; }
-  .cal-d.open { color: var(--ink); }
+  /* 予約できる日は川の淡い青（2026-10-28 ユーザー決定・案A）。満席は灰＋打ち消し線、選んだ日は墨 */
+  .cal-d.open { color: var(--ink); background: #E3ECEE; }
+  .cal-d.open:hover { background: #D6E3E6; }
   .cal-d.open .n { font-weight: 700; }
-  .cal-d.open .m { color: var(--ember); }
+  .cal-d.open .m { color: var(--river); }
   .cal-d.open.sun .n { color: var(--sun); } .cal-d.open.sat .n { color: var(--sat); }
   .cal-d.full { background: #EFEBE3; color: var(--mute); }
   .cal-d.full .n { text-decoration: line-through; font-weight: 500; }
   .cal-d.sel { background: var(--ink); color: #fff; outline: 2px solid var(--ink); outline-offset: -2px; }
   .cal-d.sel .n, .cal-d.sel .m { color: #fff !important; }
   .cal-legend { display: flex; gap: 6px 16px; flex-wrap: wrap; font-size: 12px; color: var(--mute); margin-top: 10px; }
-  .cal-legend b { color: var(--ember); font-weight: 700; }
+  .cal-legend b { color: var(--river); font-weight: 700; }
+  /* 到着の予定の札（4つずつ） */
+  .arr { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; outline: none; }
+  .arr button { appearance: none; min-height: 48px; border: 1px solid var(--hair); background: var(--white); border-radius: var(--r-s);
+    font: inherit; font-size: 15px; color: var(--ink); cursor: pointer; padding: 0 4px; }
+  .arr button.on { background: var(--ink); color: #fff; border-color: var(--ink); font-weight: 700; }
+  .field.bad .arr button { border-color: var(--bad); }
 
   /* 開催日: 時刻表のような行 */
   .month { font-family: var(--serif); font-size: 15px; font-weight: 700; color: var(--mute); margin: 24px 0 0; padding-bottom: 6px; }
@@ -527,6 +536,13 @@ var IMG = {
         <div class="hint" id="partyHint"></div>
       </div>
 
+      <div class="field" id="f-arrival">
+        <label id="arrivalLabel">到着の予定<span class="req">必須</span></label>
+        <div class="arr" id="arrival" role="radiogroup" aria-labelledby="arrivalLabel" aria-describedby="h-arrival e-arrival" tabindex="-1"></div>
+        <div class="hint" id="h-arrival">目安で大丈夫です（時間内のフリータイムなので、この時間に着かなくても利用できます）。</div>
+        <div class="ferr" id="e-arrival"></div>
+      </div>
+
       <div class="receipt">
         <div><span id="unit"></span></div>
         <div class="sum"><span>合計（税込）</span><b id="total" class="num"></b></div>
@@ -537,6 +553,12 @@ var IMG = {
         <label for="name">代表者のお名前<span class="req">必須</span></label>
         <input id="name" autocomplete="name" maxlength="50" required placeholder="例）能勢 太郎" aria-describedby="e-name">
         <div class="ferr" id="e-name"></div>
+      </div>
+      <div class="field" id="f-kana">
+        <label for="kana">フリガナ<span class="req">必須</span></label>
+        <input id="kana" maxlength="50" required placeholder="例）ノセ タロウ" aria-describedby="h-kana e-kana">
+        <div class="hint" id="h-kana">ひらがなで入れても、カタカナに直します。</div>
+        <div class="ferr" id="e-kana"></div>
       </div>
       <div class="field" id="f-email">
         <label for="email">メールアドレス<span class="req">必須</span></label>
@@ -599,9 +621,14 @@ var IMG = {
 <div class="cta-bar hidden" id="ctaBar"><div class="p" id="ctaText"></div><a class="btn" href="#dates" id="ctaGo">予約する</a></div>
 
 <script>
-  var cfg = {}, events = [], chosen = null, party = 1;
+  var cfg = {}, events = [], chosen = null, party = 1, arrival = '';
   var $ = UI.$, esc = UI.esc, yen = UI.yen;
-  var FIELDS = ['name', 'email', 'email2', 'phone'];
+  var FIELDS = ['name', 'kana', 'email', 'email2', 'phone'];
+  /** ひらがな → カタカナ・空白は全角1つに（サーバーの Validate.kana と同じ） */
+  function toKana(s) {
+    return String(s || '').replace(/[ぁ-ゖ]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) + 0x60); })
+      .replace(/[\s　]+/g, '　').trim();
+  }
   var SAVE_KEY = 'tenten_booking_draft';
   var WD = '日月火水木金土';
 
@@ -624,7 +651,7 @@ var IMG = {
     get: function () { try { return JSON.parse(sessionStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { return null; } },
     save: function () {
       if (!chosen) return;
-      var d = { eventId: chosen.id, party: party };
+      var d = { eventId: chosen.id, party: party, arrival: arrival };
       FIELDS.forEach(function (f) { d[f] = $(f).value; });
       try { sessionStorage.setItem(SAVE_KEY, JSON.stringify(d)); } catch (e) {}
     },
@@ -730,7 +757,11 @@ var IMG = {
     party = Math.min(Math.max(Number(draft.party) || 1, 1), cfg.maxParty);
     // お名前・連絡先は、日にちを変えても入れ直さなくてよいように残す
     FIELDS.forEach(function (f) { if (draft[f] && !$(f).value) $(f).value = draft[f]; });
-    FIELDS.concat(['agree']).forEach(function (f) { setErr(f, ''); });
+    FIELDS.concat(['arrival', 'agree']).forEach(function (f) { setErr(f, ''); });
+    // 到着の予定: この回の時間の中から（同じ回の続きなら前に選んだ時間）
+    var slots = e.arrivals && e.arrivals.length ? e.arrivals : slotsOf(e);
+    arrival = draft.eventId === e.id && slots.some(function (s) { return s.value === draft.arrival; }) ? draft.arrival : '';
+    renderArrival();
     updateParty();
     showErr('');
     show('formView');
@@ -744,6 +775,26 @@ var IMG = {
     $('unit').textContent = '1名 ' + yen(chosen.price) + ' × ' + party + '名';
     $('total').textContent = yen(chosen.price * party);
   }
+  /** 札が届いていないとき（古い保存の内容など）だけ、サーバーの Events.arrivalSlots と同じ決まりで作る */
+  function slotsOf(e) {
+    var toMin = function (t) { var p = String(t).split(':'); return Number(p[0]) * 60 + Number(p[1]); };
+    var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    var s = toMin(e.start_time), end = toMin(e.end_time), out = [];
+    for (var t = s; t <= end - 60; t += 60) out.push(pad(Math.floor(t / 60)) + ':' + pad(t % 60));
+    if (!out.length) out.push(e.start_time);
+    return out.map(function (v) { var p = v.split(':'); return { value: v, label: p[1] === '00' ? Number(p[0]) + '時台' : Number(p[0]) + ':' + p[1] + '頃' }; });
+  }
+  /** 到着の予定の札（1時間ごと・終わる1時間前まで。札はサーバーが回ごとに作る） */
+  function renderArrival() {
+    var slots = chosen.arrivals && chosen.arrivals.length ? chosen.arrivals : slotsOf(chosen);
+    $('arrival').innerHTML = slots.map(function (s) {
+      var on = s.value === arrival;
+      return '<button type="button" role="radio" aria-checked="' + on + '" data-arr="' + esc(s.value) + '"' + (on ? ' class="on"' : '') + '>' + esc(s.label) + '</button>';
+    }).join('');
+    Array.prototype.forEach.call($('arrival').querySelectorAll('[data-arr]'), function (b) {
+      b.onclick = function () { arrival = b.getAttribute('data-arr'); renderArrival(); setErr('arrival', ''); Draft.save(); };
+    });
+  }
   $('minus').onclick = function () { if (party > 1) { party--; updateParty(); Draft.save(); } };
   $('plus').onclick = function () { if (party < cfg.maxParty) { party++; updateParty(); Draft.save(); } };
 
@@ -755,8 +806,11 @@ var IMG = {
     if (msg) input.setAttribute('aria-invalid', 'true'); else input.removeAttribute('aria-invalid');
   }
   function check(f) {
-    var v = f === 'agree' ? $('agree').checked : $(f).value.trim(), msg = '';
+    if (f === 'kana' && $('kana').value) $('kana').value = toKana($('kana').value);
+    var v = f === 'agree' ? $('agree').checked : f === 'arrival' ? arrival : $(f).value.trim(), msg = '';
     if (f === 'name' && !v) msg = 'お名前を入れてください。';
+    if (f === 'kana') msg = !v ? 'フリガナを入れてください。' : (/^[ァ-ヶー・　]+$/.test(v) ? '' : 'フリガナはカタカナで入れてください。');
+    if (f === 'arrival' && !v) msg = '到着の予定を選んでください。';
     if (f === 'email' && !/^[^\s@<>()",;:\\]+@[^\s@<>()",;:\\]+\.[^\s@<>()",;:\\]+$/.test(v)) msg = v ? 'メールアドレスの形が正しくありません（@ と . を確かめてください）。' : 'メールアドレスを入れてください。';
     if (f === 'email2' && v !== $('email').value.trim()) msg = v ? '上のメールアドレスと一致しません。' : '確認のため、もう一度入れてください。';
     if (f === 'phone') {
@@ -776,7 +830,7 @@ var IMG = {
   function showErr(msg) { $('err').textContent = msg; $('err').classList.toggle('hidden', !msg); }
   /** サーバーの誤りの文を、その項目の下に出す（分からないものは画面の下にまとめて） */
   function serverErr(res) {
-    var m = res.message || '', map = [['メールアドレス', 'email'], ['電話', 'phone'], ['名前', 'name']];
+    var m = res.message || '', map = [['メールアドレス', 'email'], ['電話', 'phone'], ['フリガナ', 'kana'], ['到着', 'arrival'], ['名前', 'name']];
     for (var i = 0; i < map.length; i++) {
       if (res.code === 'INVALID' && m.indexOf(map[i][0]) >= 0) { setErr(map[i][1], m); scrollToEl($('f-' + map[i][1])); $(map[i][1]).focus(); return; }
     }
@@ -789,14 +843,14 @@ var IMG = {
     ev.preventDefault();
     showErr('');
     Draft.save(); // 自動入力（オートフィル）で入れた値も残す
-    var bad = FIELDS.concat(['agree']).filter(function (f) { return !check(f); });
+    var bad = ['arrival'].concat(FIELDS, ['agree']).filter(function (f) { return !check(f); });
     if (bad.length) { scrollToEl($('f-' + bad[0])); if (bad[0] !== 'agree') $(bad[0]).focus(); return; }
     var btn = $('submit');
     btn.disabled = true; btn.innerHTML = '<span class="spinner" aria-hidden="true" style="border-color:rgba(255,255,255,.35);border-top-color:#fff"></span>席を確保しています…';
     var botToken = Bot.token();
     if (Bot.on && !botToken) { btn.disabled = false; btn.textContent = 'お支払いへ進む'; showErr('「人間であることの確認」を済ませてください。'); return; }
     UI.call('api_startBooking', {
-      eventId: chosen.id, partySize: party, name: $('name').value,
+      eventId: chosen.id, partySize: party, name: $('name').value, kana: $('kana').value, arrival: arrival,
       email: $('email').value, emailConfirm: $('email2').value, phone: $('phone').value, agree: true, botToken: botToken
     }).then(function (res) {
       btn.disabled = false; btn.textContent = 'お支払いへ進む';
@@ -877,7 +931,7 @@ var IMG = {
    * 2) 設定と開催日は1回の問い合わせ（api_getHome）。外のページでは、ページを読み込み始めた時点で問い合わせを始めている（HOME_PREFETCH）
    * 3) 最新が届いたら入れ替える。予約のときは必ずサーバーで最新の空席を確かめるので、前の内容で満席の回に予約が入ることはない
    */
-  var HOME_KEY = 'tenten:home:v1';
+  var HOME_KEY = 'tenten:home:v2'; // v2: 開催日に到着の予定の札（arrivals）が入った（2026-10-28）
   var today0 = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
   var saved = null;
   try { saved = JSON.parse(localStorage.getItem(HOME_KEY) || 'null'); } catch (e) { saved = null; }
