@@ -3,6 +3,9 @@
 <head>
 <base target="_top">
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://script.google.com https://script.googleusercontent.com; frame-src https://challenges.cloudflare.com; form-action 'self'; base-uri 'self'; object-src 'none'">
+<style id="noframe">html{display:none}</style>
+<script>if (window.top === window.self) { var nf = document.getElementById('noframe'); nf.parentNode.removeChild(nf); } else { try { window.top.location = window.self.location.href; } catch (e) {} }</script>
 <title>Ten.Ten ｜大阪・能勢のテントサウナ ご予約</title>
 <meta name="referrer" content="no-referrer">
 <script>
@@ -175,6 +178,32 @@ var UI = {
       google.script.run.withSuccessHandler(function (r) { resolve(r || { ok: false, message: '通信に失敗しました。' }); })
         .withFailureHandler(function () { resolve({ ok: false, message: '通信に失敗しました。電波の良い所で、もう一度お試しください。' }); })[fn].apply(null, args);
     });
+  },
+  /**
+   * URL の鍵（予約確認の t・マイページの k・管理ログインの login）を、読んだあとで URL から消す（点検 M2・2026-10-28）。
+   * 履歴・共有の端末・配信元の記録に鍵を残さないため。再読み込みできるように、鍵はこのタブの中（sessionStorage）にだけ残す。
+   * Apps Script の枠の中で開いたときは URL を変えない（枠の外の URL は変えられない）
+   */
+  hideParams: function (P, keys) {
+    var store = 'p:' + location.pathname, has = keys.some(function (k) { return !!P[k]; });
+    try {
+      if (has) {
+        var keep = {};
+        Object.keys(P).forEach(function (k) { if (k !== 'login') keep[k] = P[k]; });
+        sessionStorage.setItem(store, JSON.stringify(keep));
+      } else {
+        var s = JSON.parse(sessionStorage.getItem(store) || '{}');
+        // 別の予約のページを開いたときは使わない（URL に残っている値と食い違えば戻さない）
+        var same = Object.keys(P).every(function (k) { return !(k in s) || s[k] === P[k]; });
+        if (same) Object.keys(s).forEach(function (k) { if (!P[k]) P[k] = s[k]; });
+      }
+    } catch (e) { /* 保存できない端末でも、表示はできる */ }
+    try {
+      var q = new URLSearchParams(location.search), changed = false;
+      keys.forEach(function (k) { if (q.has(k)) { q.delete(k); changed = true; } });
+      if (changed && window.top === window.self) history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q.toString() : '') + location.hash);
+    } catch (e) { /* 古いブラウザは何もしない */ }
+    return P;
   },
   loading: function (text) { return '<div class="loading"><span class="spinner" aria-hidden="true"></span>' + UI.esc(text || '読み込み中…') + '</div>'; },
   /** Google カレンダーに追加するリンク（日本時間） */
@@ -512,6 +541,7 @@ var IMG = {
         <label class="check"><input type="checkbox" id="agree" aria-describedby="e-agree"> <span>ご利用規約（キャンセル・返金の条件を含む）と、個人情報の取り扱い（予約の管理と当日のご連絡だけに使います）に同意します</span></label>
         <div class="ferr" id="e-agree"></div>
       </div>
+      <div id="bot" class="hidden" style="margin:12px 0"></div>
       <div class="notice err hidden" id="err" role="alert"></div>
       <button type="submit" class="btn block" id="submit">お支払いへ進む</button>
       <button type="button" class="btn ghost block" id="back">開催日の一覧へ戻る</button>
@@ -738,11 +768,14 @@ var IMG = {
     if (bad.length) { scrollToEl($('f-' + bad[0])); if (bad[0] !== 'agree') $(bad[0]).focus(); return; }
     var btn = $('submit');
     btn.disabled = true; btn.innerHTML = '<span class="spinner" aria-hidden="true" style="border-color:rgba(255,255,255,.35);border-top-color:#fff"></span>席を確保しています…';
+    var botToken = Bot.token();
+    if (Bot.on && !botToken) { btn.disabled = false; btn.textContent = 'お支払いへ進む'; showErr('「人間であることの確認」を済ませてください。'); return; }
     UI.call('api_startBooking', {
       eventId: chosen.id, partySize: party, name: $('name').value,
-      email: $('email').value, emailConfirm: $('email2').value, phone: $('phone').value, agree: true
+      email: $('email').value, emailConfirm: $('email2').value, phone: $('phone').value, agree: true, botToken: botToken
     }).then(function (res) {
       btn.disabled = false; btn.textContent = 'お支払いへ進む';
+      Bot.reset(); // 確認の札は1回だけ使える
       if (!res.ok) { serverErr(res); if (res.code === 'FULL' || res.code === 'CLOSED') load(); return; }
       var d = res.data;
       $('number').textContent = d.number;
@@ -754,6 +787,28 @@ var IMG = {
       $('payLink').href = d.checkoutUrl;
       show('payView');
     });
+  };
+
+  /**
+   * 人の確認（Cloudflare Turnstile）。管理側で鍵を入れたときだけ表示する（席の買い占め対策・点検 H1・2026-10-28）。
+   * 鍵が無ければ何も読み込まない
+   */
+  var Bot = {
+    on: false, id: null,
+    start: function (siteKey) {
+      if (!siteKey) return;
+      Bot.on = true;
+      $('bot').classList.remove('hidden');
+      window.onTurnstileLoad = function () {
+        Bot.id = window.turnstile.render('#bot', { sitekey: siteKey, language: 'ja' });
+      };
+      var s = document.createElement('script');
+      s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onTurnstileLoad';
+      s.async = true;
+      document.head.appendChild(s);
+    },
+    token: function () { return Bot.on && window.turnstile && Bot.id !== null ? (window.turnstile.getResponse(Bot.id) || '') : ''; },
+    reset: function () { if (Bot.on && window.turnstile && Bot.id !== null) window.turnstile.reset(Bot.id); }
   };
 
   /* ---------- メールアドレスで予約を確かめる ---------- */
@@ -791,6 +846,7 @@ var IMG = {
     cfg = res.data;
     var g = cfg.guide;
     UI.chrome(cfg);
+    Bot.start(cfg.turnstileSiteKey);
     $('facts').innerHTML = [['場所', '大阪府能勢町'], ['アクセス', g.access[0]], ['駐車場', g.access[1].replace('駐車場', '')]]
       .map(function (f) { return '<div><b>' + esc(f[0]) + '</b>' + esc(f[1]) + '</div>'; }).join('');
     var IMG_KEY = { fire: 'f_fire', river: 'f_river', tent: 'f_tent' };
