@@ -252,6 +252,7 @@ var UI = {
       '<dt>内容</dt><dd>' + e(v.eventTitle) + '</dd>' +
       '<dt>場所</dt><dd>' + e(v.venue) + '</dd>' +
       '<dt>人数</dt><dd>' + e(v.partySize) + '名</dd>' +
+      (v.arrivalLabel ? '<dt>到着の予定</dt><dd>' + e(v.arrivalLabel) + '<span class="muted">（目安）</span></dd>' : '') +
       '<dt>お支払い</dt><dd>' + UI.yen(v.amount) + '<span class="muted">（1名 ' + UI.yen(v.unitPrice) + '）</span></dd>' +
       '<dt>代表者</dt><dd>' + e(v.name) + ' 様</dd>' +
       (v.emailMasked ? '<dt>メール</dt><dd>' + e(v.emailMasked) + '</dd>' : '') + '</dl>';
@@ -365,6 +366,7 @@ var UI = {
         '<dt>日時</dt><dd>' + esc(x.dateLabel) + ' ' + esc(x.start) + '〜' + esc(x.end) + '</dd>' +
         '<dt>内容</dt><dd>' + esc(x.title) + '</dd>' +
         '<dt>人数</dt><dd>' + esc(x.partySize) + '名</dd>' +
+        (x.arrivalLabel ? '<dt>到着の予定</dt><dd>' + esc(x.arrivalLabel) + '<span class="muted">（目安）</span></dd>' : '') +
         '<dt>お支払い</dt><dd>' + UI.yen(x.amount) + '<span class="muted">（お支払い済み）</span></dd></dl>';
       if (g) {
         extra += '<a class="btn ink block" target="_blank" rel="noopener" href="' + esc(UI.calendarUrl({
