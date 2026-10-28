@@ -3,6 +3,9 @@
 <head>
 <base target="_top">
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://script.google.com https://script.googleusercontent.com; frame-src https://challenges.cloudflare.com; form-action 'self'; base-uri 'self'; object-src 'none'">
+<style id="noframe">html{display:none}</style>
+<script>if (window.top === window.self) { var nf = document.getElementById('noframe'); nf.parentNode.removeChild(nf); } else { try { window.top.location = window.self.location.href; } catch (e) {} }</script>
 <title>Ten.Ten ｜大阪・能勢のテントサウナ 予約管理</title>
 <meta name="referrer" content="no-referrer">
 <script>
@@ -168,6 +171,32 @@ var UI = {
       google.script.run.withSuccessHandler(function (r) { resolve(r || { ok: false, message: '通信に失敗しました。' }); })
         .withFailureHandler(function () { resolve({ ok: false, message: '通信に失敗しました。電波の良い所で、もう一度お試しください。' }); })[fn].apply(null, args);
     });
+  },
+  /**
+   * URL の鍵（予約確認の t・マイページの k・管理ログインの login）を、読んだあとで URL から消す（点検 M2・2026-10-28）。
+   * 履歴・共有の端末・配信元の記録に鍵を残さないため。再読み込みできるように、鍵はこのタブの中（sessionStorage）にだけ残す。
+   * Apps Script の枠の中で開いたときは URL を変えない（枠の外の URL は変えられない）
+   */
+  hideParams: function (P, keys) {
+    var store = 'p:' + location.pathname, has = keys.some(function (k) { return !!P[k]; });
+    try {
+      if (has) {
+        var keep = {};
+        Object.keys(P).forEach(function (k) { if (k !== 'login') keep[k] = P[k]; });
+        sessionStorage.setItem(store, JSON.stringify(keep));
+      } else {
+        var s = JSON.parse(sessionStorage.getItem(store) || '{}');
+        // 別の予約のページを開いたときは使わない（URL に残っている値と食い違えば戻さない）
+        var same = Object.keys(P).every(function (k) { return !(k in s) || s[k] === P[k]; });
+        if (same) Object.keys(s).forEach(function (k) { if (!P[k]) P[k] = s[k]; });
+      }
+    } catch (e) { /* 保存できない端末でも、表示はできる */ }
+    try {
+      var q = new URLSearchParams(location.search), changed = false;
+      keys.forEach(function (k) { if (q.has(k)) { q.delete(k); changed = true; } });
+      if (changed && window.top === window.self) history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q.toString() : '') + location.hash);
+    } catch (e) { /* 古いブラウザは何もしない */ }
+    return P;
   },
   loading: function (text) { return '<div class="loading"><span class="spinner" aria-hidden="true"></span>' + UI.esc(text || '読み込み中…') + '</div>'; },
   /** Google カレンダーに追加するリンク（日本時間） */
@@ -683,6 +712,7 @@ var UI = {
               (e.status === 'PUBLISHED' ? '<button type="button" class="btn ghost small" data-unpub="' + esc(e.id) + '">非公開にする</button>' : '') +
               (e.status !== 'CANCELLED' ? '<button type="button" class="btn ghost small" data-edit="' + esc(e.id) + '">編集</button>' : '') +
               '<button type="button" class="btn ghost small" data-dup="' + esc(e.id) + '">複製</button>' +
+              (e.heldSeats ? '<button type="button" class="btn ghost small" data-release="' + esc(e.id) + '">決済待ち（' + e.heldSeats + '名）を解除</button>' : '') +
               (e.status === 'CANCELLED' && e.toRefund ? '<button type="button" class="btn danger small" data-refund="' + esc(e.id) + '">返金へ（' + e.toRefund + '件）</button>' : '') +
               '<span class="spacer"></span>' +
               (e.status !== 'CANCELLED' ? '<button type="button" class="link" style="color:var(--bad)" data-cancel="' + esc(e.id) + '">開催中止…</button>' : '') +
@@ -700,6 +730,16 @@ var UI = {
         busy(b); admin('api_adminSetEventPublished', id, false).then(function (r) { if (r.ok) { toast('非公開にしました'); eventsTab(includePast); } else { unbusy(b); toast(r.message, true); } });
       });
       each($('main'), 'data-dup', function (id) { bulkPanel(find(id), includePast); });
+      // 買い占めの疑いのとき: 支払われていない仮押さえをまとめて解除（支払い済みの人はそのまま確定）
+      each($('main'), 'data-release', function (id, b) {
+        if (!confirm('この回の「決済待ち（仮押さえ）」をすべて解除します。\n支払いの途中のお客様は、決済ページが閉じて最初からやり直しになります（支払い済みの人はそのまま確定します）。')) return;
+        busy(b, '解除しています…');
+        admin('api_adminReleaseHolds', id).then(function (r) {
+          if (!r.ok) { unbusy(b); toast(r.message, true); return; }
+          toast('解除 ' + r.data.released + '件' + (r.data.confirmed ? '・支払い済みで確定 ' + r.data.confirmed + '件' : '') + (r.data.failed ? '・確認できず ' + r.data.failed + '件（10分ごとの確認で処理）' : ''), r.data.failed > 0);
+          eventsTab(includePast);
+        });
+      });
       each($('main'), 'data-cancel', function (id) { cancelPanel(find(id)); });
       each($('main'), 'data-refund', function (id) { go('refunds', id); });
     });
@@ -1248,7 +1288,8 @@ var UI = {
 
   /* ---------- 起動 ---------- */
   google.script.url.getLocation(function (loc) {
-    var p = loc.parameter || {};
+    // ログインのリンクの鍵は1回だけ使える。読んだらすぐ URL から消す（タブにも残さない・点検 M2）
+    var p = UI.hideParams(loc.parameter || {}, ['login']);
     var saved = '';
     try { saved = sessionStorage.getItem('adm') || ''; } catch (e) { saved = ''; }
     if (p.login) {
