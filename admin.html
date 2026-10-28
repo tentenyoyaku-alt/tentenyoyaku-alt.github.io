@@ -264,8 +264,8 @@ var UI = {
       html += '<div class="row-btns">' +
         '<a class="btn ink small" target="_blank" rel="noopener" href="' + e(UI.calendarUrl({
           date: v.date, start: v.start, end: v.end, title: 'テントサウナ Ten.Ten（' + v.number + '）', location: g.venue,
-          details: '予約番号 ' + v.number + '\n持ち物: ' + g.bring.join('・') + '\n地図: ' + g.mapUrl })) + '">Google カレンダーに追加</a>' +
-        UI.mapLink(g) + '</div>';
+          details: '予約番号 ' + v.number + '\n持ち物: ' + g.bring.join('・') + '\n地図: ' + g.mapUrl })) + '">Google カレンダーに追加</a></div>';
+      // 地図は下の「当日のご案内」の場所の行にある（同じボタンを2つ出さない）
     }
     return html;
   },
