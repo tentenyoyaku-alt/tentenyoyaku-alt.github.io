@@ -3,6 +3,9 @@
 <head>
 <base target="_top">
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://script.google.com https://script.googleusercontent.com; frame-src https://challenges.cloudflare.com; form-action 'self'; base-uri 'self'; object-src 'none'">
+<style id="noframe">html{display:none}</style>
+<script>if (window.top === window.self) { var nf = document.getElementById('noframe'); nf.parentNode.removeChild(nf); } else { try { window.top.location = window.self.location.href; } catch (e) {} }</script>
 <title>Ten.Ten ｜大阪・能勢のテントサウナ ご予約の確認</title>
 <meta name="referrer" content="no-referrer">
 <script>
@@ -169,6 +172,32 @@ var UI = {
         .withFailureHandler(function () { resolve({ ok: false, message: '通信に失敗しました。電波の良い所で、もう一度お試しください。' }); })[fn].apply(null, args);
     });
   },
+  /**
+   * URL の鍵（予約確認の t・マイページの k・管理ログインの login）を、読んだあとで URL から消す（点検 M2・2026-10-28）。
+   * 履歴・共有の端末・配信元の記録に鍵を残さないため。再読み込みできるように、鍵はこのタブの中（sessionStorage）にだけ残す。
+   * Apps Script の枠の中で開いたときは URL を変えない（枠の外の URL は変えられない）
+   */
+  hideParams: function (P, keys) {
+    var store = 'p:' + location.pathname, has = keys.some(function (k) { return !!P[k]; });
+    try {
+      if (has) {
+        var keep = {};
+        Object.keys(P).forEach(function (k) { if (k !== 'login') keep[k] = P[k]; });
+        sessionStorage.setItem(store, JSON.stringify(keep));
+      } else {
+        var s = JSON.parse(sessionStorage.getItem(store) || '{}');
+        // 別の予約のページを開いたときは使わない（URL に残っている値と食い違えば戻さない）
+        var same = Object.keys(P).every(function (k) { return !(k in s) || s[k] === P[k]; });
+        if (same) Object.keys(s).forEach(function (k) { if (!P[k]) P[k] = s[k]; });
+      }
+    } catch (e) { /* 保存できない端末でも、表示はできる */ }
+    try {
+      var q = new URLSearchParams(location.search), changed = false;
+      keys.forEach(function (k) { if (q.has(k)) { q.delete(k); changed = true; } });
+      if (changed && window.top === window.self) history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q.toString() : '') + location.hash);
+    } catch (e) { /* 古いブラウザは何もしない */ }
+    return P;
+  },
   loading: function (text) { return '<div class="loading"><span class="spinner" aria-hidden="true"></span>' + UI.esc(text || '読み込み中…') + '</div>'; },
   /** Google カレンダーに追加するリンク（日本時間） */
   calendarUrl: function (o) {
@@ -320,7 +349,7 @@ var UI = {
   }
   $('main').innerHTML = UI.loading();
   google.script.url.getLocation(function (loc) {
-    P = loc.parameter || {};
+    P = UI.hideParams(loc.parameter || {}, ['k']);
     UI.call('api_getPublicConfig').then(function (c) {
       if (c.ok) { cfg = c.data; UI.chrome(cfg); }
       UI.call('api_getMyReservations', P.k).then(function (res) {
