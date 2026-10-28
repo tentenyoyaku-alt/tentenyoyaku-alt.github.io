@@ -464,6 +464,12 @@ var UI = {
   th { color: var(--mute); font-weight: 600; font-size: 12px; border-bottom-color: var(--ink); }
   .scroll { overflow-x: auto; }
   .scroll th, .scroll td { white-space: nowrap; }
+  /* 理由・内容など長い文の列は折り返す（スマホで横に大きくはみ出さないように・見直し B26） */
+  .scroll td.wrap { white-space: normal; min-width: 12em; }
+  /* 小さな文字のボタン（最新にする など）も押しやすい高さに（見直し B27） */
+  main .link { padding: 10px 2px; min-height: 40px; }
+  /* 変えられない欄は灰色に（予約がある回の日付・時間など） */
+  main input:disabled { background: #EFEBE3; color: var(--mute); cursor: not-allowed; }
   .login { max-width: 400px; margin: 40px auto; padding: 0 20px; }
   .toast { position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%); max-width: calc(100% - 32px); z-index: 50;
     background: var(--ink); color: #fff; padding: 12px 18px; border-radius: var(--r-s); font-weight: 700; font-size: 14px; }
@@ -508,21 +514,33 @@ var UI = {
   var S = { token: '', me: null, tab: 'home', events: [], dash: null };
   var esc = UI.esc, yen = UI.yen, $ = UI.$;
   var TABS = [
-    ['home', 'ホーム'], ['events', '開催回'], ['res', '予約'], ['checkin', '受付'], ['requests', '申請'],
+    ['home', 'ホーム'], ['events', '開催回'], ['res', '予約'], ['checkin', '受付'], ['requests', 'キャンセル'],
     ['refunds', '返金', 'MASTER'], ['issues', '要対応'], ['admins', '管理者', 'MASTER']
   ];
   var MOBILE_TABS = ['home', 'checkin', 'res', 'requests', 'more']; // 下のタブ。残りは「その他」
   // 状態の名前（予約・支払い・返金を混同しないように、表示では「予約:」「支払い:」「返金:」を付ける）
-  var RS_L = { HOLD: '決済待ち', CONFIRMED: '確定', CANCEL_REQUESTED: 'キャンセル申請中', CANCELLED: 'キャンセル済（返金なし）', EXPIRED: '期限切れ（未確定）',
+  var RS_L = { HOLD: '支払い待ち', CONFIRMED: '確定', CANCEL_REQUESTED: 'キャンセル申請中', CANCELLED: 'キャンセル済（返金なし）', EXPIRED: '期限切れ（未確定）',
     EVENT_CANCELLED: '開催中止', NEEDS_ATTENTION: '要確認' };
-  var PS_L = { PENDING: '決済中', PAID: '支払済', EXPIRED: '期限切れ', FAILED: '失敗', REFUNDED: '返金済' };
-  var RF_L = { TO_REFUND: '返金待ち', PROCESSING: '手続き中', PENDING: '手続き中', SUCCEEDED: '返金済', FAILED: '返金失敗' };
+  // 言葉は「支払い待ち」「支払い済み」「返金済み」にそろえる（決済中・決済済み・仮押さえを混ぜない・2026-10-28 見直し B24）
+  var PS_L = { PENDING: '支払い待ち', PAID: '支払い済み', EXPIRED: '期限切れ', FAILED: '失敗', REFUNDED: '返金済み' };
+  var RF_L = { TO_REFUND: '返金待ち', PROCESSING: '手続き中', PENDING: '手続き中', SUCCEEDED: '返金済み', FAILED: '返金失敗' };
   var EV_L = { DRAFT: '未公開', PUBLISHED: '公開中', CANCELLED: '開催中止' };
+  // メールの種類と操作の記録を日本語で出す（英語の記号のままだと分からない・2026-10-28 見直し A3・A4）
+  var KIND_L = { confirmation: '予約確定', reminder: '前日の案内', cancel_requested: 'キャンセル申請の受付', cancel_approved: 'キャンセル確定',
+    cancel_rejected: 'キャンセル申請の却下', event_cancelled: '開催中止', refunded: '返金完了', admin_login: '管理画面のログイン',
+    admin_alert: '管理者への知らせ', my_link: '予約の確認用リンク', my_none: '予約の確認（見つからない）', new_booking: '新しい予約の知らせ' };
+  var ACT_L = { LOGIN: 'ログイン', LOGOUT: 'ログアウト', LOGIN_LINK_EDITOR: '非常口のログイン', ADMIN_ADD: '管理者を追加', ADMIN_ROLE: '権限を変更',
+    ADMIN_REMOVE: '管理者を削除', ISSUES_ACK: '要対応を確認済みに', RESEND_CONFIRMATION: '確認メールを再送', RETENTION_ANONYMIZE: '古い個人情報を削除',
+    EVENT_TEMPLATE: 'ひな形を変更', EVENT_CREATE: '開催回を作成', EVENT_CREATE_MANY: '開催回をまとめて作成', EVENT_CREATE_MANY_PUBLISH: '開催回をまとめて作成・公開',
+    EVENT_UPDATE: '開催回を編集', EVENT_PUBLISH: '公開', EVENT_UNPUBLISH: '非公開に', EVENT_DUPLICATE: '開催回を複製', EVENT_CANCEL: '開催中止',
+    HOLDS_RELEASE: '支払い待ちを解除', REFUND_EXECUTE: '返金を実行', CANCEL_APPROVE: 'キャンセルを承認', CANCEL_REJECT: 'キャンセルを却下',
+    CHECKIN: '受付', CHECKIN_UNDO: '受付を取り消し', TEST_NOTICE: '知らせのテスト' };
   function st(kind, v) {
     if (!v) return '';
     var label = (kind === '予約' ? RS_L : kind === '支払い' ? PS_L : RF_L)[v] || v;
     var cls = /^(CONFIRMED|PAID|SUCCEEDED)$/.test(v) ? 'ok' : /^(FAILED|NEEDS_ATTENTION|EVENT_CANCELLED|CANCELLED|EXPIRED)$/.test(v) ? 'ng' : 'wait';
-    return '<span class="chip ' + cls + '"><span class="k">' + kind + '</span>' + esc(label) + '</span>';
+    // 「返金 返金待ち」「支払い 支払い済み」のように同じ言葉を重ねない
+    return '<span class="chip ' + cls + '">' + (label.indexOf(kind) === 0 ? '' : '<span class="k">' + kind + '</span>') + esc(label) + '</span>';
   }
   function evChip(s) { return '<span class="chip ' + (s === 'PUBLISHED' ? 'ok' : s === 'CANCELLED' ? 'ng' : 'info') + '">' + esc(EV_L[s] || s) + '</span>'; }
   function todayJst() { return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' }); }
@@ -571,10 +589,13 @@ var UI = {
 
   /* ---------- ログイン ---------- */
   $('loginBtn').onclick = function () {
+    var em = $('loginEmail');
+    // 形だけ先に確かめる・送ったあとの案内を足す（見直し B23）
+    if (!em.value.trim() || !em.checkValidity()) { $('loginMsg').innerHTML = '<div class="notice err">メールアドレスの形を確かめてください。</div>'; em.focus(); return; }
     var b = $('loginBtn'); busy(b, '送っています…');
-    call('api_adminRequestLogin', $('loginEmail').value).then(function (res) {
+    call('api_adminRequestLogin', em.value).then(function (res) {
       unbusy(b);
-      $('loginMsg').innerHTML = notice(res, res.ok ? res.data.message : '');
+      $('loginMsg').innerHTML = notice(res, res.ok ? res.data.message + '届くまで数分かかることがあります。迷惑メールのフォルダも見てください。もう一度送れるのは3分後です。' : '');
     });
   };
   $('logout').onclick = function (e) { e.preventDefault(); admin('api_adminLogout').then(function () { logoutLocal(); }); };
@@ -617,7 +638,7 @@ var UI = {
   }
   function setCounts(d) {
     S.dash = d;
-    counts = { requests: d.cancelRequests, refunds: d.refundIssues, issues: d.attention + d.mailFailures + d.errors + (isMaster() ? 0 : d.refundIssues) };
+    counts = { requests: d.cancelRequests, refunds: d.refundIssues, issues: d.attention + (d.stuckMails || 0) + d.mailFailures + d.errors + (isMaster() ? 0 : d.refundIssues) };
     nav();
     var test = d.env !== 'prod' || d.stripeMode !== 'live';
     var bar = $('envBar');
@@ -660,10 +681,10 @@ var UI = {
   function seatHtml(e, withCheckin) {
     var used = e.confirmedSeats + e.heldSeats, pct = e.capacity ? Math.min(100, Math.round(used / e.capacity * 100)) : 0;
     var full = e.remaining <= 0;
-    return '<div class="seat"><div class="seat-t num">予約 <b>' + e.confirmedSeats + '</b> / 定員 ' + e.capacity + '名　残り <b>' + e.remaining + '</b>名' +
+    return '<div class="seat"><div class="seat-t num">予約 <b>' + e.confirmedSeats + '</b>名 / 定員 ' + e.capacity + '名　残り <b>' + e.remaining + '</b>名' +
       (full ? '　<span class="chip full">満席</span>' : '') + '</div>' +
       '<div class="bar' + (full ? ' full' : '') + '" aria-hidden="true"><span style="width:' + pct + '%"></span></div>' +
-      (e.heldSeats ? '<div class="meta">ほかに決済中 ' + e.heldSeats + '名（30分ほどで確定か解除）</div>' : '') +
+      (e.heldSeats ? '<div class="meta">ほかに支払い待ち ' + e.heldSeats + '名（30分ほどで確定か解除）</div>' : '') +
       (withCheckin ? '<div class="meta">受付済 ' + e.checkedSeats + ' / ' + e.confirmedSeats + '名・' + e.groups + '組</div>' : '') + '</div>';
   }
 
@@ -681,16 +702,18 @@ var UI = {
       item(d.cancelRequests, 'キャンセル申請', '「承認（返金なし・席が空く）」か「却下（予約はそのまま）」を選んでください。', 'requests', '申請を見る');
       item(d.refundIssues, '返金が終わっていない予約', isMaster() ? '中止した回の返金待ち・手続き中・失敗。内容を確認してから返金します。' : '主管理者が「返金」から対応します。', isMaster() ? 'refunds' : 'issues', isMaster() ? '返金を見る' : '内容を見る');
       item(d.attention, '支払いの要確認', '支払い済みですが自動で確定できなかった予約です。お客様に連絡してください。', 'issues', '内容を見る');
+      item(d.stuckMails, 'メールが届いたか分からない予約', '確認メールや前日の案内を送る途中で止まりました。予約一覧の「確認メールを再送」で送り直せます。', 'issues', '内容を見る');
       item(d.mailFailures, 'メールの送信失敗（7日間）', '確認メールなどが届いていない可能性があります。', 'issues', '内容を見る');
       item(d.errors, '処理エラー（7日間）', '画面や自動処理で起きたエラーの記録です。', 'issues', '内容を見る');
       item(d.queuedMails, 'メールの送信待ち', '今日のメールの送信の上限（Gmail は1日100通）に届いたため、枠が戻りしだい自動で送ります（10分ごとに確認）。何もしなくて大丈夫です。' +
         (d.mailLeft >= 0 ? '（今の残り ' + d.mailLeft + '通）' : ''), 'home', '最新にする', true);
-      var drafts = d.today.concat(d.upcoming).filter(function (e) { return e.status === 'DRAFT'; }).length;
+      var drafts = d.drafts !== undefined ? d.drafts : d.today.concat(d.upcoming).filter(function (e) { return e.status === 'DRAFT'; }).length;
       if (isMaster()) item(drafts, '未公開の開催回', '内容を確認して公開すると、お客様が予約できるようになります。', 'events', '開催回を見る', true);
       var card = function (e, isToday) {
         if (e.status === 'CANCELLED') {
           return '<div class="evcard"><div class="ev-h"><span class="d">' + esc(e.dateLabel) + '</span><span class="t num">' + esc(e.start_time) + '〜' + esc(e.end_time) + '</span>' + evChip(e.status) + '</div>' +
-            '<div class="meta">' + esc(e.title) + '・中止の理由: ' + esc(e.cancelReason) + (e.toRefund ? '・<b>返金待ち ' + e.toRefund + '件</b>' : '・返金済み') + '</div></div>';
+            '<div class="meta">' + esc(e.title) + '・中止の理由: ' + esc(e.cancelReason) + (e.toRefund ? '・<b>返金待ち ' + e.toRefund + '件</b>' : '・返金待ちはありません') + '</div>' +
+            (e.toRefund && isMaster() ? '<div class="btns"><button type="button" class="btn danger small" data-refund="' + esc(e.id) + '">返金へ（' + e.toRefund + '件）</button></div>' : '') + '</div>';
         }
         return '<div class="evcard' + (isToday ? ' today' : '') + '"><div class="ev-h"><span class="d">' + esc(e.dateLabel) + '</span><span class="t num">' + esc(e.start_time) + '〜' + esc(e.end_time) + '</span>' + evChip(e.status) + '</div>' +
           '<div class="meta">' + esc(e.title) + '・1名 ' + yen(e.price) + '</div>' + seatHtml(e, isToday) + arrivalsHtml(e) +
@@ -707,6 +730,7 @@ var UI = {
       each($('main'), 'data-t', function (t) { go(t); });
       each($('main'), 'data-res', function (id) { go('res', id); });
       each($('main'), 'data-ci', function (id) { go('checkin', id); });
+      each($('main'), 'data-refund', function (id) { go('refunds', id); });
       $('reload').onclick = function () { go('home'); };
     });
   }
@@ -730,10 +754,10 @@ var UI = {
             (e.status !== 'CANCELLED' ? seatHtml(e, false) + arrivalsHtml(e) : '<div class="meta">中止の理由: ' + esc(e.cancelReason) + (e.toRefund ? '・<b>返金待ち ' + e.toRefund + '件</b>' : '') + '</div>') +
             (master ? '<div class="btns">' +
               (e.status === 'DRAFT' ? '<button type="button" class="btn small" data-pub="' + esc(e.id) + '">内容を確認して公開</button>' : '') +
-              (e.status === 'PUBLISHED' ? '<button type="button" class="btn ghost small" data-unpub="' + esc(e.id) + '">非公開にする</button>' : '') +
+              (e.status === 'PUBLISHED' ? '<button type="button" class="btn ghost small" data-unpub="' + esc(e.id) + '">未公開に戻す</button>' : '') +
               (e.status !== 'CANCELLED' ? '<button type="button" class="btn ghost small" data-edit="' + esc(e.id) + '">編集</button>' : '') +
               '<button type="button" class="btn ghost small" data-dup="' + esc(e.id) + '">複製</button>' +
-              (e.heldSeats ? '<button type="button" class="btn ghost small" data-release="' + esc(e.id) + '">決済待ち（' + e.heldSeats + '名）を解除</button>' : '') +
+              (e.heldSeats ? '<button type="button" class="btn ghost small" data-release="' + esc(e.id) + '">支払い待ち（' + e.heldSeats + '名）を解除</button>' : '') +
               (e.status === 'CANCELLED' && e.toRefund ? '<button type="button" class="btn danger small" data-refund="' + esc(e.id) + '">返金へ（' + e.toRefund + '件）</button>' : '') +
               '<span class="spacer"></span>' +
               (e.status !== 'CANCELLED' ? '<button type="button" class="link" style="color:var(--bad)" data-cancel="' + esc(e.id) + '">開催中止…</button>' : '') +
@@ -744,16 +768,16 @@ var UI = {
       if ($('pubMany')) $('pubMany').onclick = function () { publishManyPanel(includePast); };
       if ($('tplBtn')) $('tplBtn').onclick = function () { templatePanel(); };
       var find = function (id) { return S.events.filter(function (e) { return e.id === id; })[0]; };
-      each($('main'), 'data-edit', function (id) { eventForm(find(id), $('pn-' + id)); });
+      each($('main'), 'data-edit', function (id) { eventForm(find(id), $('pn-' + id), includePast); });
       each($('main'), 'data-pub', function (id) { publishPanel(find(id), includePast); });
       each($('main'), 'data-unpub', function (id, b) {
-        if (!confirm('非公開にすると、新しい予約を受け付けなくなります（すでにある予約はそのままです）。')) return;
-        busy(b); admin('api_adminSetEventPublished', id, false).then(function (r) { if (r.ok) { toast('非公開にしました'); eventsTab(includePast); } else { unbusy(b); toast(r.message, true); } });
+        if (!confirm('未公開に戻すと、予約ページに出なくなり、新しい予約を受け付けなくなります（すでにある予約はそのままです）。')) return;
+        busy(b); admin('api_adminSetEventPublished', id, false).then(function (r) { if (r.ok) { toast('未公開に戻しました'); eventsTab(includePast); } else { unbusy(b); toast(r.message, true); } });
       });
       each($('main'), 'data-dup', function (id) { bulkPanel(find(id), includePast); });
       // 買い占めの疑いのとき: 支払われていない仮押さえをまとめて解除（支払い済みの人はそのまま確定）
       each($('main'), 'data-release', function (id, b) {
-        if (!confirm('この回の「決済待ち（仮押さえ）」をすべて解除します。\n支払いの途中のお客様は、決済ページが閉じて最初からやり直しになります（支払い済みの人はそのまま確定します）。')) return;
+        if (!confirm('この回の「支払い待ち」（席をおさえたまま、まだ支払っていない予約）をすべて解除します。\n支払いの途中のお客様は、支払いのページが閉じて最初からやり直しになります（支払い済みの人はそのまま確定します）。')) return;
         busy(b, '解除しています…');
         admin('api_adminReleaseHolds', id).then(function (r) {
           if (!r.ok) { unbusy(b); toast(r.message, true); return; }
@@ -958,8 +982,8 @@ var UI = {
     closePanels();
     var p = $('pn-' + e.id);
     p.innerHTML = '<div class="panel danger"><h3>開催中止にしますか？</h3>' +
-      '<dl class="sum"><dt>対象の回</dt><dd>' + eventLine(e) + '</dd><dt>決済済み</dt><dd>' + e.groups + '件・' + e.confirmedSeats + '名</dd></dl>' +
-      '<ul class="list meta"><li>決済済みの予約は「返金待ち」になり、お客様に<b>中止と全額返金のメール</b>が届きます。</li><li>決済中の人の決済ページは閉じます。</li>' +
+      '<dl class="sum"><dt>対象の回</dt><dd>' + eventLine(e) + '</dd><dt>支払い済み</dt><dd>' + e.groups + '件・' + e.confirmedSeats + '名</dd></dl>' +
+      '<ul class="list meta"><li>支払い済みの予約は「返金待ち」になり、お客様に<b>中止と全額返金のメール</b>が届きます。</li><li>支払いの途中の人の支払いページは閉じます。</li>' +
       '<li>返金そのものは、次の「返金」の画面で対象と金額を確認してから実行します（まだお金は動きません）。</li><li>中止は取り消せません。</li></ul>' +
       '<div class="field"><label for="cxWhy">中止の理由（お客様へのメールに載ります）<span class="req">必須</span></label><input id="cxWhy" maxlength="200" placeholder="例: 増水のため"></div>' +
       '<div class="btns"><button type="button" class="btn danger" id="cxGo">開催中止にする</button><button type="button" class="btn ghost" id="cxNo">やめる</button></div><div id="cxMsg"></div></div>';
@@ -977,8 +1001,10 @@ var UI = {
     };
   }
   /** 開催回の入力（画面の確認は補助。正しいかどうかの最終の確認はサーバー） */
-  function eventForm(e, box) {
+  function eventForm(e, box, includePast) {
     closePanels();
+    // 予約がある回は日付・時間を変えられない（お客様に知らせが届かないため。サーバーも断る・2026-10-28 見直し B1）
+    var locked = !!(e && (e.confirmedSeats || e.heldSeats)), lk = locked ? ' disabled' : '';
     // 料金は入場料込み（フリータイム 3,000円＋入場料 1,000円。ユーザー決定 2026-10-27・規約と同じ）
     var v = e || { title: 'テントサウナ（フリータイム）', date: '', start_time: '10:00', end_time: '12:00', capacity: 6, price: 4000, description: 'フリータイム 3,000円＋入場料 1,000円' };
     var f = function (id, label, input, hint, opt) {
@@ -987,14 +1013,15 @@ var UI = {
     };
     box.innerHTML = '<div class="panel"><h3>' + (e ? '開催回の編集' : '新しい開催回（未公開で保存）') + '</h3>' +
       f('title', 'タイトル', '<input id="f_title" maxlength="60" value="' + esc(v.title) + '">') +
-      f('date', '開催日', '<input id="f_date" type="date" value="' + esc(v.date) + '">', esc(dowLabel(v.date))) +
-      '<div class="grid2">' + f('start', '開始', '<input id="f_start" type="time" value="' + esc(v.start_time) + '">') +
-      f('end', '終了', '<input id="f_end" type="time" value="' + esc(v.end_time) + '">') + '</div>' +
+      f('date', '開催日', '<input id="f_date" type="date" value="' + esc(v.date) + '"' + lk + '>', esc(dowLabel(v.date))) +
+      '<div class="grid2">' + f('start', '開始', '<input id="f_start" type="time" value="' + esc(v.start_time) + '"' + lk + '>') +
+      f('end', '終了', '<input id="f_end" type="time" value="' + esc(v.end_time) + '"' + lk + '>') + '</div>' +
+      (locked ? '<div class="notice info">予約がある回なので、日付と時間は変えられません（お客様に知らせが届かないため）。日時を変えるときは、この回を「開催中止」にして（全額返金）、新しい回を作ってください。</div>' : '') +
       '<div class="grid2">' + f('cap', '定員（人）', '<input id="f_cap" type="number" min="1" max="200" inputmode="numeric" value="' + esc(v.capacity) + '">') +
       f('price', '料金（1人あたり・円）', '<input id="f_price" type="number" min="100" inputmode="numeric" value="' + esc(v.price) + '">', '税込・入場料込み') + '</div>' +
       '<div class="meta" id="f_calc"></div>' +
-      f('desc', '補足（予約画面に表示）', '<input id="f_desc" maxlength="300" value="' + esc(v.description) + '">', '例: フリータイム 3,000円＋入場料 1,000円', true) +
-      (e && e.confirmedSeats ? '<div class="notice info">すでに ' + e.confirmedSeats + '名の予約があります。料金を変えても、予約済みの人の金額は変わりません。定員は予約済み・決済中の人数より少なくできません。</div>' : '') +
+      f('desc', '補足（予約の入力画面と確認メールに表示）', '<input id="f_desc" maxlength="300" value="' + esc(v.description) + '">', '例: フリータイム 3,000円＋入場料 1,000円', true) +
+      (e && e.confirmedSeats ? '<div class="notice info">すでに ' + e.confirmedSeats + '名の予約があります。料金を変えても、予約済みの人の金額は変わりません。定員は予約済み・支払い待ちの人数より少なくできません。</div>' : '') +
       (e && e.status === 'PUBLISHED' ? '<div class="notice info">公開中の回です。保存すると、すぐ予約画面に反映されます。</div>' : '') +
       '<div class="btns"><button type="button" class="btn" id="f_save">' + (e ? '変更を保存' : '保存（未公開）') + '</button><button type="button" class="btn ghost" id="f_close">閉じる</button></div><div id="f_msg"></div></div>';
     var calc = function () {
@@ -1026,13 +1053,20 @@ var UI = {
         end_time: $('f_end').value, capacity: $('f_cap').value, price: $('f_price').value, description: $('f_desc').value }).then(function (r) {
         if (!r.ok) { unbusy($('f_save')); $('f_msg').innerHTML = notice(r); return; }
         toast(e ? '変更を保存しました' : '保存しました（未公開）。内容を確認してから公開してください');
-        eventsTab(false);
+        eventsTab(!!includePast); // 「過去の回も表示」を保ったまま（見直し B34）
       });
     };
     box.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   /* ---------- 予約 ---------- */
+  // 予約のメモ・返金のエラーの記号を日本語に（分からない記号はそのまま・2026-10-28 見直し B5）
+  var CODE_L = { PAID_NO_SEAT: '仮押さえの期限の後に支払われ、席が足りない', ASYNC_PAYMENT: '後から支払いが確定する方法が選ばれた',
+    AMOUNT_MISMATCH: '支払われた金額が予約の金額と違う', CURRENCY_MISMATCH: '支払いの通貨が円ではない', EVENT_MISMATCH: '支払いの開催回が予約と違う',
+    REPLACED: '同じお客様が申し込み直したため解除', RELEASED_BY_ADMIN: '管理者が支払い待ちを解除', CHECKOUT_CREATE_FAILED: '支払いのページを作れなかった',
+    EVENT_CANCELLED: '開催中止', NO_PAYMENT_ID: '支払いの記録が見つからない', PARTIAL_REFUND_EXISTS: 'Stripe で一部だけ返金済み（Stripe の画面で確認）',
+    charge_disputed: 'お客様がカード会社に異議を申し立て中', NETWORK: 'Stripe につながらなかった（もう一度お試しください）' };
+  function codeL(c) { c = String(c || ''); var k = c.replace(/^STRIPE_/, ''); return CODE_L[k] ? esc(CODE_L[k]) + '<span class="meta">（' + esc(c) + '）</span>' : esc(c); }
   function resRow(r, extra) {
     var tel = String(r.phone || '').replace(/[^\d+]/g, '');
     return '<div class="res" data-name="' + esc(searchKey(r)) + '">' +
@@ -1044,16 +1078,21 @@ var UI = {
       '<div class="meta">' + esc(r.email) + '<br>' + (tel ? '<a href="tel:' + esc(tel) + '">' + esc(r.phone) + '</a>' : esc(r.phone)) + '</div>' +
       ((r.cancel_reason || r.refund_error || r.note || r.confirm_mail_status === 'FAILED') ? '<div class="wide meta">' +
         (r.cancel_reason ? 'キャンセルの理由: ' + esc(r.cancel_reason) + '<br>' : '') +
-        (r.refund_error ? '<b style="color:var(--bad)">返金のエラー: ' + esc(r.refund_error) + '</b><br>' : '') +
-        (r.note ? 'メモ: ' + esc(r.note) + '<br>' : '') +
+        (r.refund_error ? '<b style="color:var(--bad)">返金のエラー: ' + codeL(r.refund_error) + '</b><br>' : '') +
+        (r.note ? 'メモ: ' + codeL(r.note) + '<br>' : '') +
         (r.confirm_mail_status === 'FAILED' ? '<b style="color:var(--bad)">確認メール: 送信失敗</b>' : '') + '</div>' : '') +
       (extra ? '<div class="wide">' + extra + '</div>' : '') + '</div>';
   }
   var THEAD = '<div class="thead"><span>お名前・人数・予約番号・到着</span><span>状態・回・金額</span><span>連絡先</span></div>';
   /** 絞り込みの文字: 名前・予約番号・フリガナ（ひらがなで入れてもカタカナに当たるよう、カタカナに直したものも入れる） */
   function kata(s) { return String(s || '').replace(/[ぁ-ゖ]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) + 0x60); }); }
-  function searchKey(r) { return (r.name + ' ' + r.number + ' ' + (r.kana || '')).toLowerCase().replace(/[\s　]+/g, ''); }
-  function searchQ(v) { return kata(String(v || '').toLowerCase().replace(/[\s　]+/g, '')); }
+  // 電話番号（数字だけと、そのまま）・メールアドレスでも絞り込めるように（サーバーの検索とそろえる・見直し B16）
+  function searchKey(r) { var p = String(r.phone || ''); return (r.name + ' ' + r.number + ' ' + (r.kana || '') + ' ' + p + ' ' + p.replace(/\D/g, '') + ' ' + (r.email || '')).toLowerCase().replace(/[\s　]+/g, ''); }
+  function searchQ(v) {
+    var s = String(v || '').toLowerCase().replace(/[\s　]+/g, '').replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
+    // 数字とハイフンだけなら電話番号として数字だけで探す（090-1234 でも 0901234 でも当たる）
+    return /^[\d\-－ー()（）]+$/.test(s) ? s.replace(/\D/g, '') : kata(s);
+  }
   /** 到着の予定ごとの組・人数（例: 12時台 2組4名・13時台 1組2名） */
   function arrivalsHtml(e) {
     if (!e.arrivals || !e.arrivals.length) return '';
@@ -1062,35 +1101,39 @@ var UI = {
       // 駐車の合計（2026-10-28）。車両を聞いていない古い予約があれば、その組数も
       '<div class="meta">駐車: 車 <b>' + (p.cars || 0) + '台</b>・バイク <b>' + (p.bikes || 0) + '台</b>' + (p.unknown ? '（ほかに台数未確認 ' + p.unknown + '組）' : '') + '</div>';
   }
+  // メールを送った結果（QUEUED＝今日の上限で送信待ち も日本語で・見直し B9）
+  var MAIL_ST = { SENT: '送信しました', DRYRUN: '記録しました（テストのため送信なし）', FAILED: '送信に失敗しました',
+    QUEUED: '送信待ちです（今日の送信の上限のため、枠が戻りしだい自動で送ります）', SKIPPED: '送りませんでした（宛先がありません）' };
   function bindResend(root) {
     each(root, 'data-resend', function (id, b) {
-      if (!confirm('確認メールを再送します。前に送った確認のリンクは使えなくなります。')) return;
+      if (!confirm('確認メールを ' + (b.getAttribute('data-mail') || 'お客様') + ' に再送します。前に送った確認のリンクは使えなくなります。')) return;
       busy(b, '送っています…');
       admin('api_adminResendConfirmation', id).then(function (r) {
         unbusy(b);
-        toast(r.ok ? '確認メール: ' + ({ SENT: '送信しました', DRYRUN: '記録しました（テストのため送信なし）', FAILED: '送信に失敗しました' }[r.data.status] || r.data.status) : r.message, !r.ok || r.data.status === 'FAILED');
+        toast(r.ok ? '確認メール: ' + (MAIL_ST[r.data.status] || r.data.status) : r.message, !r.ok || r.data.status === 'FAILED');
       });
     });
   }
   function resTab(eventId) {
     loadEvents(true).then(function () {
-      var list = S.events.slice().reverse();
       var today = todayJst();
+      // 並びは「今日・これから（近い順）→ 過去（新しい順）」（受付の画面とそろえる・見直し B35）
+      var list = S.events.filter(function (e) { return e.date >= today; }).concat(S.events.filter(function (e) { return e.date < today; }).reverse());
       var sel = eventId || (S.events.filter(function (e) { return e.date >= today && e.status !== 'CANCELLED'; })[0] || list[0] || {}).id;
       if (!sel) { $('main').innerHTML = '<h1>予約一覧</h1><p class="meta">開催回がまだありません</p>'; return; }
       $('main').innerHTML = '<h1>予約一覧</h1><div class="field"><label for="resEv">開催回</label>' + eventSelect('resEv', list, sel) + '</div>' +
         '<div class="field"><label for="q">名前・予約番号で絞り込み</label><div class="search"><input id="q" placeholder="例: 山田" autocomplete="off">' +
-        '<button type="button" class="btn ghost small" id="qAll">全部の回から探す</button></div><div class="hint">入力すると、この回の中で絞り込みます。「全部の回から探す」は名前の一部・予約番号で全部の回を探します。</div></div>' +
+        '<button type="button" class="btn ghost small" id="qAll">全部の回から探す</button></div><div class="hint">入力すると、この回の中で絞り込みます。「全部の回から探す」は名前・フリガナ・予約番号・電話番号・メールアドレスの一部で、全部の回を探します。</div></div>' +
         '<div id="resSum" class="meta" style="margin:8px 0"></div>' + THEAD + '<div id="resList"></div>';
-      var rows = [];
+      var rows = [], allMode = false;
       var show = function (res, all) {
         if (!res.ok) { $('resList').innerHTML = notice(res); return; }
-        rows = res.data;
+        rows = res.data; allMode = all;
         var active = rows.filter(function (r) { return r.status === 'CONFIRMED' || r.status === 'CANCEL_REQUESTED'; });
         var ppl = active.reduce(function (n, r) { return n + Number(r.party_size); }, 0);
         $('resSum').innerHTML = (all ? '全部の回からの検索結果 ' : '') + rows.length + '件（うち確定・申請中 ' + active.length + '組・' + ppl + '名）';
         $('resList').innerHTML = rows.map(function (r) {
-          return resRow(r, (r.status === 'CONFIRMED' || r.status === 'CANCEL_REQUESTED') ? '<button type="button" class="link" data-resend="' + esc(r.id) + '" style="font-size:13px">確認メールを再送</button>' : '');
+          return resRow(r, (r.status === 'CONFIRMED' || r.status === 'CANCEL_REQUESTED') ? '<button type="button" class="btn ghost small" data-resend="' + esc(r.id) + '" data-mail="' + esc(r.email) + '">確認メールを再送</button>' : '');
         }).join('') || '<p class="meta">予約はありません</p>';
         bindResend($('resList'));
         filter();
@@ -1100,17 +1143,19 @@ var UI = {
         Array.prototype.forEach.call($('resList').querySelectorAll('.res'), function (c) {
           var hit = !q || kata(c.getAttribute('data-name')).indexOf(q) >= 0; c.classList.toggle('hidden', !hit); if (hit) n++;
         });
-        if (q && !n) $('resSum').innerHTML += '<br>「' + esc($('q').value) + '」はこの回にありません。「全部の回から探す」を試してください。';
+        if (q && !n) $('resSum').innerHTML += '<br>「' + esc($('q').value) + '」は' + (allMode ? '検索結果の中にありません。' : 'この回にありません。「全部の回から探す」を試してください。');
       };
       var byEvent = function () { $('resList').innerHTML = UI.loading(); admin('api_adminListReservations', $('resEv').value).then(function (r) { show(r, false); }); };
       $('resEv').onchange = function () { $('q').value = ''; byEvent(); };
-      $('q').oninput = function () { show({ ok: true, data: rows }, false); };
+      // 全部の回の検索のあとに文字を足しても、全部の回の結果のまま絞り込む（見直し B15）
+      $('q').oninput = function () { show({ ok: true, data: rows }, allMode); };
       $('qAll').onclick = function () {
         if (!$('q').value.trim()) { toast('名前か予約番号を入れてください', true); $('q').focus(); return; }
         $('resList').innerHTML = UI.loading();
         admin('api_adminSearch', $('q').value).then(function (r) { show(r, true); });
       };
-      $('q').onkeydown = function (e) { if (e.key === 'Enter') $('qAll').onclick(); };
+      // 漢字の変換を決める Enter では探さない（見直し B17）
+      $('q').onkeydown = function (e) { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) $('qAll').onclick(); };
       byEvent();
     });
   }
@@ -1127,12 +1172,15 @@ var UI = {
         '<button type="button" class="btn ghost small" id="ciReload">最新にする</button></div>' +
         '<div class="field"><label for="ciQ">名前・予約番号で探す</label><input id="ciQ" placeholder="例: 山田" autocomplete="off"></div><div id="ciList"></div>';
       var ev = function () { return live.filter(function (e) { return e.id === $('ciEv').value; })[0]; };
-      var load = function (keepScroll) {
+      var load = function (keepScroll, done) {
         var y = window.scrollY;
         var e = ev();
         $('ciDay').innerHTML = e && e.date !== today ? '<div class="notice info">今日の回ではありません（' + esc(e.dateLabel) + '）。</div>' : '';
         admin('api_adminListReservations', $('ciEv').value).then(function (res) {
+          if (done) done(res.ok);
           if (!res.ok) { $('ciList').innerHTML = notice(res); return; }
+          // 支払いの要確認の人も出す（当日来ても名前で見つかるように。受付はせず主管理者へ・2026-10-28 見直し B4）
+          var attention = res.data.filter(function (r) { return r.status === 'NEEDS_ATTENTION' && r.payment_status === 'PAID'; });
           // 到着の予定の早い順（同じ時間の中はフリガナ順・2026-10-28）
           var rows = res.data.filter(function (r) { return r.status === 'CONFIRMED' || r.status === 'CANCEL_REQUESTED'; })
             .sort(function (a, b) { return (a.arrival || '99') < (b.arrival || '99') ? -1 : (a.arrival || '99') > (b.arrival || '99') ? 1 : (a.kana || a.name).localeCompare(b.kana || b.name, 'ja'); });
@@ -1151,8 +1199,13 @@ var UI = {
               '<div><span class="chip ' + (r.checked_in ? 'ok">受付済' : 'wait">未受付') + '</span>' + (r.status === 'CANCEL_REQUESTED' ? ' <span class="chip wait">キャンセル申請中</span>' : '') + '</div>' +
               '<div class="meta num">' + esc(r.number) + '・' + (tel ? '<a href="tel:' + esc(tel) + '">' + esc(r.phone) + '</a>' : esc(r.phone)) + '</div></div>' +
               (r.checked_in ? '<button type="button" class="btn ghost small" data-undo="' + esc(r.id) + '" aria-label="' + esc(r.name) + ' 様の受付を取り消す">取り消す</button>'
-                : '<button type="button" class="btn" data-ci="' + esc(r.id) + '" data-who="' + esc(r.name + ' 様（' + r.party_size + '名）') + '">受付する</button>') + '</div>';
-          }).join('') || '<p class="meta">確定した予約はありません</p>';
+                : '<button type="button" class="btn" data-ci="' + esc(r.id) + '" data-who="' + esc(r.name + ' 様（' + r.party_size + '名）') + '"' +
+                  (r.status === 'CANCEL_REQUESTED' ? ' data-req="1"' : '') + '>受付する</button>') + '</div>';
+          }).join('') + (attention.length ? '<h3 class="ci-arr" style="color:var(--bad)">支払いの要確認（受付の前に主管理者へ）</h3>' + attention.map(function (r) {
+            return '<div class="ci" data-name="' + esc(searchKey(r)) + '"><div><div class="big">' + esc(r.name) + '　<span class="num">' + esc(r.party_size) + '名</span></div>' +
+              '<div><span class="chip ng">要確認・支払い済み</span></div><div class="meta">' + (r.note ? codeL(r.note) : '自動で確定できなかった予約です') + '</div>' +
+              '<div class="meta num">' + esc(r.number) + '・' + esc(r.phone) + '</div></div></div>';
+          }).join('') : '') || '<p class="meta">確定した予約はありません</p>';
           filter();
           if (keepScroll) window.scrollTo(0, y);
           var act = function (id, b, on) {
@@ -1163,17 +1216,33 @@ var UI = {
               load(true);
             });
           };
-          each($('ciList'), 'data-ci', function (id, b) { act(id, b, true); });
+          each($('ciList'), 'data-ci', function (id, b) {
+            // キャンセル申請中の人が来たとき（受付の後に申請を承認すると予約が消えるので、先に確かめる・見直し B30）
+            if (b.getAttribute('data-req') && !confirm('この方はキャンセルを申請中です。\n来場したので受付しますか？（あとで「キャンセル申請」の画面で申請を「却下」してください）')) return;
+            act(id, b, true);
+          });
           each($('ciList'), 'data-undo', function (id, b) { if (confirm('受付を取り消しますか？')) act(id, b, false); });
         });
       };
+      // 絞り込み: 中が全部隠れた到着の時間の見出しも隠す・0件なら知らせる（見直し B29）
       var filter = function () {
-        var q = searchQ($('ciQ').value);
-        Array.prototype.forEach.call($('ciList').querySelectorAll('.ci'), function (c) { c.classList.toggle('hidden', !!q && kata(c.getAttribute('data-name')).indexOf(q) < 0); });
+        var q = searchQ($('ciQ').value), n = 0, head = null, shown = 0;
+        var fin = function () { if (head) head.classList.toggle('hidden', !shown); };
+        Array.prototype.forEach.call($('ciList').children, function (c) {
+          if (c.classList.contains('ci-arr')) { fin(); head = c; shown = 0; return; }
+          if (!c.classList.contains('ci')) return;
+          var hit = !q || kata(c.getAttribute('data-name')).indexOf(q) >= 0;
+          c.classList.toggle('hidden', !hit); if (hit) { n++; shown++; }
+        });
+        fin();
+        var none = $('ciNone');
+        if (none) none.remove();
+        if (q && !n) $('ciList').insertAdjacentHTML('beforeend', '<p class="meta" id="ciNone">「' + esc($('ciQ').value) + '」は見つかりません。別の回の予約なら「予約」の「全部の回から探す」で探せます。</p>');
       };
       $('ciQ').oninput = filter;
       $('ciEv').onchange = function () { $('ciQ').value = ''; load(false); };
-      $('ciReload').onclick = function () { load(true); toast('最新の状態にしました'); };
+      // 読み込みが終わってから知らせる（見直し B28）
+      $('ciReload').onclick = function () { load(true, function (ok) { toast(ok ? '最新の状態にしました' : '読み込めませんでした。電波の良い所でもう一度', !ok); }); };
       load(false);
     });
   }
@@ -1185,13 +1254,18 @@ var UI = {
       $('main').innerHTML = '<h1>キャンセル申請 <span class="muted">未処理 ' + res.data.length + '件</span></h1>' +
         '<div class="notice info">申請はまだ確定していません。<b>承認</b>するとキャンセルが確定して席が空き、お客様に確定のメールが届きます（お客様都合のため<b>返金なし</b>）。<b>却下</b>すると予約は有効なままです。</div><div id="rqMsg"></div>' +
         (res.data.length ? THEAD + res.data.map(function (r) {
-          return resRow(r, '<div class="btns" style="margin-top:4px"><button type="button" class="btn small" data-ok="' + esc(r.id) + '">承認（返金なし・席が空く）</button><button type="button" class="btn ghost small" data-ng="' + esc(r.id) + '">却下（予約はそのまま）</button></div>');
+          // 取り消せない「承認」は赤い枠・2つのボタンは間をあける（見直し B7）。確認の文に誰の予約かを入れる（B6）
+          var who = r.name + ' 様（' + r.party_size + '名・' + r.number + '・' + r.eventLabel + '）';
+          return resRow(r, '<div class="btns" style="margin-top:4px;gap:16px"><button type="button" class="btn ghost small" data-ng="' + esc(r.id) + '" data-who="' + esc(who) + '">却下（予約はそのまま）</button>' +
+            '<button type="button" class="btn danger-ghost small" data-ok="' + esc(r.id) + '" data-who="' + esc(who) + '">承認（返金なし・席が空く）</button></div>');
         }).join('') : '<p class="meta">未処理の申請はありません</p>');
       var decide = function (id, b, ok) {
-        if (!confirm(ok ? 'キャンセルを承認します（返金なし）。よろしいですか？' : '申請を却下し、予約を有効なままにします。よろしいですか？')) return;
+        var who = b.getAttribute('data-who') || '';
+        if (!confirm(ok ? who + ' のキャンセルを承認します。\n席が空き、お客様にキャンセル確定のメールが届きます。返金はありません。元に戻せません。'
+          : who + ' の申請を却下します。\n予約は有効なままで、お客様に却下のメールが届きます。')) return;
         busy(b);
         admin('api_adminDecideCancel', id, ok).then(function (r) {
-          if (!r.ok) { unbusy(b); $('rqMsg').innerHTML = notice(r); return; }
+          if (!r.ok) { unbusy(b); $('rqMsg').innerHTML = notice(r); toast(r.message, true); return; }
           toast(ok ? '承認しました（返金なし）' : '却下しました（予約は有効）'); requestsTab(); refreshCounts();
         });
       };
@@ -1204,7 +1278,8 @@ var UI = {
   function refundsTab(eventId) {
     if (!isMaster()) { $('main').innerHTML = '<h1>全額返金</h1><div class="notice info">返金は主管理者だけが実行できます。</div>'; return; }
     loadEvents(true).then(function () {
-      var cancelled = S.events.filter(function (e) { return e.status === 'CANCELLED'; }).reverse();
+      // 返金待ちのある中止回だけ（済んだ回をずっと並べない）。指定がなければ最初の1つを選ぶ（見直し B12）
+      var cancelled = S.events.filter(function (e) { return e.status === 'CANCELLED' && (e.toRefund || e.id === eventId); }).reverse();
       admin('api_adminIssues').then(function (iss) {
         var attention = iss.ok ? iss.data.attention.filter(function (r) { return r.payment_status === 'PAID'; }) : [];
         var opts = cancelled.map(function (e) { return '<option value="E:' + esc(e.id) + '"' + (e.id === eventId ? ' selected' : '') + '>中止: ' + eventLine(e) + '（返金待ち ' + e.toRefund + '件）</option>'; })
@@ -1215,6 +1290,7 @@ var UI = {
         if (!opts.length) return;
         $('rfPrev').onclick = preview;
         $('rfT').onchange = function () { $('rfBox').innerHTML = ''; };
+        if (eventId) preview(); // 中止のすぐ後などは、もう一度押さなくても内容を出す（見直し B32）
       });
     });
     function target() { var v = $('rfT').value; return v.charAt(0) === 'E' ? { eventId: v.slice(2) } : { reservationId: v.slice(2) }; }
@@ -1226,25 +1302,35 @@ var UI = {
         $('rfBox').innerHTML = '<div class="panel danger"><h3>返金の内容</h3>' +
           (p.alreadyRefunded ? '<p class="meta">返金済み ' + p.alreadyRefunded + '件（今回の対象外）</p>' : '') +
           (p.inProgress ? '<p class="meta">手続き中 ' + p.inProgress + '件（結果待ち・今回の対象外。10分ごとに確認されます）</p>' : '') +
-          (p.count ? '<div class="scroll"><table><tr><th>予約番号</th><th>代表者</th><th>人数</th><th>返金額</th><th>状態</th></tr>' +
-            p.items.map(function (r) { return '<tr><td class="num">' + esc(r.number) + '</td><td>' + esc(r.name) + '</td><td>' + esc(r.party_size) + '名</td><td class="num">' + yen(r.amount) + '</td><td>' + st('返金', r.refund_status) + (r.refund_error ? '<br><span class="meta">' + esc(r.refund_error) + '</span>' : '') + '</td></tr>'; }).join('') +
-            '</table></div><dl class="sum"><dt>対象</dt><dd>' + p.count + '件・' + p.totalPeople + '名</dd><dt>返金の合計</dt><dd class="serif num" style="font-size:22px">' + yen(p.totalAmount) + '</dd></dl>' +
-            '<div class="field"><label for="rfWord">実行するには「返金する」と入力してください</label><input id="rfWord" autocomplete="off"></div>' +
+          // スマホで横にはみ出さないように3列（予約番号は名前の下・前に失敗した分だけ印）（2026-10-28 見直し A2）
+          (p.count ? '<table><tr><th>代表者</th><th>人数</th><th>返金額</th></tr>' +
+            p.items.map(function (r) {
+              return '<tr><td>' + esc(r.name) + '<br><span class="meta num">' + esc(r.number) + '</span>' +
+                (r.refund_status === 'FAILED' ? '<br><span class="meta" style="color:var(--bad)">前回は返金に失敗（' + codeL(r.refund_error) + '）</span>' : '') +
+                '</td><td>' + esc(r.party_size) + '名</td><td class="num">' + yen(r.amount) + '</td></tr>';
+            }).join('') +
+            '</table><dl class="sum"><dt>対象</dt><dd>' + p.count + '件・' + p.totalPeople + '名</dd><dt>返金の合計</dt><dd class="serif num" style="font-size:22px">' + yen(p.totalAmount) + '</dd></dl>' +
+            '<p class="meta">返金が終わると、お客様に返金完了のメールが自動で届きます（カードの明細への反映は数日〜数週間）。</p>' +
+            '<div class="field"><label for="rfWord">実行するには「返金する」と入力してください（ひらがなの「へんきんする」でも可）</label><input id="rfWord" autocomplete="off"></div>' +
             '<button type="button" class="btn danger block" id="rfExec">' + p.count + '件・' + yen(p.totalAmount) + 'を返金する</button>'
             : '<p>返金する予約はありません。</p>') + '<div id="rfRes"></div></div>';
         $('rfBox').scrollIntoView({ behavior: 'smooth', block: 'start' });
         if (!p.count) return;
         $('rfExec').onclick = function () {
-          if ($('rfWord').value.trim() !== '返金する') { $('rfRes').innerHTML = '<div class="notice err">「返金する」と入力してください。</div>'; $('rfWord').focus(); return; }
+          if (!/^(返金する|へんきんする)$/.test($('rfWord').value.replace(/[\s　]+/g, ''))) { $('rfRes').innerHTML = '<div class="notice err">「返金する」と入力してください。</div>'; $('rfWord').focus(); return; }
           busy($('rfExec'), '返金しています…（画面を閉じないでください）');
           admin('api_adminRefundExecute', target(), p.hash).then(function (r) {
             if (!r.ok) { $('rfRes').innerHTML = notice(r); $('rfExec').textContent = 'やり直すには「返金内容を確認」から'; return; }
-            var d = r.data;
-            $('rfRes').innerHTML = '<div class="notice ' + (d.failed.length ? 'err' : 'ok') + '">成功 ' + d.succeeded.length + '件' +
-              (d.pending.length ? '・手続き中 ' + d.pending.length + '件（10分ごとに確認）' : '') +
-              (d.failed.length ? '<br>失敗 ' + d.failed.length + '件: ' + esc(d.failed.join(', ')) + '<br>「返金内容を確認」から、失敗した分だけを再実行できます' : '') +
-              (d.skipped.length ? '<br>時間切れで未処理 ' + d.skipped.length + '件（「返金内容を確認」から再実行してください）' : '') + '</div>';
-            $('rfExec').textContent = '完了（もう一度確認するには「返金内容を確認」）';
+            var d = r.data, left = d.failed.length + d.skipped.length;
+            // 結果だけを出す（返金前の表・入力欄を残すと「返金待ち」のままに見える・2026-10-28 見直し A1）
+            $('rfBox').innerHTML = '<div class="panel"><h3>返金の結果</h3><div class="notice ' + (left ? 'err' : 'ok') + '">返金しました: ' + d.succeeded.length + '件' +
+              (d.pending.length ? '<br>手続き中: ' + d.pending.length + '件（10分ごとに結果を確かめ、終わるとお客様にメールが届きます）' : '') +
+              (d.failed.length ? '<br>失敗: ' + d.failed.length + '件（' + esc(d.failed.join(', ')) + '）。「返金内容を確認」から、失敗した分だけをもう一度返金できます' : '') +
+              (d.skipped.length ? '<br>時間切れで未処理: ' + d.skipped.length + '件（「返金内容を確認」からもう一度）' : '') + '</div>' +
+              (d.succeeded.length ? '<p class="meta">返金したお客様には、返金完了のメールが届きます。</p>' : '') + '</div>';
+            // 対象の選択肢の「返金待ち ○件」も今の数に
+            var o = $('rfT').options[$('rfT').selectedIndex];
+            if (o && o.value.charAt(0) === 'E') o.textContent = o.textContent.replace(/返金待ち \d+件/, '返金待ち ' + left + '件');
             refreshCounts();
           });
         };
@@ -1276,11 +1362,11 @@ var UI = {
         ackBox +
         sec('メールの送信失敗', d.mailFailures.length, '新しい順・最大50件。', '<div class="scroll"><table><tr><th>日時</th><th>予約番号</th><th>種類</th><th>宛先</th><th>理由</th><th></th></tr>' +
           d.mailFailures.map(function (m) {
-            return '<tr' + mark(m.at) + '><td class="num">' + esc(jst(m.at)) + seenTag(m.at) + '</td><td class="num">' + esc(m.number) + '</td><td>' + esc(m.kind) + '</td><td>' + esc(m.to_masked) + '</td><td>' + esc(m.error) + '</td><td>' +
+            return '<tr' + mark(m.at) + '><td class="num">' + esc(jst(m.at)) + seenTag(m.at) + '</td><td class="num">' + esc(m.number) + '</td><td>' + esc(KIND_L[m.kind] || m.kind) + '</td><td>' + esc(m.to_masked) + '</td><td class="wrap">' + esc(m.error) + '</td><td>' +
               (m.kind === 'confirmation' && m.reservation_id ? '<button type="button" class="btn ghost small" data-resend="' + esc(m.reservation_id) + '">再送</button>' : '') + '</td></tr>';
           }).join('') + '</table></div>') +
         sec('処理エラー', d.errors.length, '新しい順・最大50件。', '<div class="scroll"><table><tr><th>日時</th><th>場所</th><th>内容</th><th>対象</th></tr>' +
-          d.errors.map(function (x) { return '<tr' + mark(x.at) + '><td class="num">' + esc(jst(x.at)) + seenTag(x.at) + '</td><td>' + esc(x.where) + '</td><td>' + esc(x.code) + '<br><span class="meta">' + esc(x.message) + '</span></td><td>' + esc(x.ref) + '</td></tr>'; }).join('') + '</table></div>');
+          d.errors.map(function (x) { return '<tr' + mark(x.at) + '><td class="num">' + esc(jst(x.at)) + seenTag(x.at) + '</td><td>' + esc(x.where) + '</td><td class="wrap">' + esc(x.code) + '<br><span class="meta">' + esc(x.message) + '</span></td><td>' + esc(x.ref) + '</td></tr>'; }).join('') + '</table></div>');
       bindResend($('main'));
       if ($('ackBtn')) $('ackBtn').onclick = function () {
         if (!confirm('今までのメール送信失敗・処理エラーを「確認済み」にします。\nホームの件数から外れます（記録は消えません）。\n「支払いの要確認」「返金」は対象外です。')) return;
@@ -1301,41 +1387,66 @@ var UI = {
       $('main').innerHTML = '<h1>管理者</h1><div class="notice info"><b>主管理者</b>: すべての操作（開催回の作成・公開・中止、返金、管理者の変更を含む）。<br><b>一般管理者</b>: 予約の確認・受付・キャンセル申請の処理・確認メールの再送。</div><div id="adMsg"></div>' +
         res.data.map(function (a) {
           var me = a.email === S.me.email;
-          return '<div class="row" style="padding:12px 0;border-bottom:1px solid var(--hair)"><div><b>' + esc(a.email) + '</b>' + (me ? '（あなた）' : '') + '　<span class="role' + (a.role === 'MASTER' ? '' : ' staff') + '">' + (a.role === 'MASTER' ? '主管理者' : '一般管理者') + '</span></div><div class="btns" style="margin:0">' +
+          return '<div class="row" style="padding:12px 0;border-bottom:1px solid var(--hair)"><div><b>' + esc(a.email) + '</b>' + (me ? '（あなた）' : '') + '　<span class="role' + (a.role === 'MASTER' ? '' : ' staff') + '">' + (a.role === 'MASTER' ? '主管理者' : '一般管理者') + '</span></div>' +
+            // 自分の権限の変更・削除は出さない（自分を外して入れなくなるのを防ぐ・2026-10-28 見直し A5）。変えるときは別の主管理者が行う
+            (me ? '<p class="meta" style="margin:4px 0 0">自分の権限の変更・削除は、別の主管理者が行います。</p>' : '<div class="btns" style="margin:0">' +
             '<button type="button" class="btn ghost small" data-role="' + esc(a.email) + '" data-to="' + (a.role === 'MASTER' ? 'STAFF' : 'MASTER') + '">' + (a.role === 'MASTER' ? '一般管理者にする' : '主管理者にする') + '</button>' +
-            '<button type="button" class="btn danger-ghost small" data-del="' + esc(a.email) + '">削除</button></div></div>';
+            '<button type="button" class="btn danger-ghost small" data-del="' + esc(a.email) + '">削除</button></div>') + '</div>';
         }).join('') +
         '<h2>管理者を追加</h2><div class="field"><label for="adEmail">メールアドレス<span class="req">必須</span></label><input id="adEmail" type="email" autocomplete="off"></div>' +
         '<div class="field"><label for="adRole">権限</label><select id="adRole"><option value="STAFF">一般管理者（予約・受付・申請の処理）</option><option value="MASTER">主管理者（返金・中止・管理者の変更も）</option></select></div>' +
         '<button type="button" class="btn" id="adAdd">追加</button>' +
         // 知らせのテストはテスト環境だけ（ユーザー決定 2026-10-28「本番には必要ない」・サーバーも本番では断る）
-        (testEnv ? '<h2>知らせのテスト</h2><p class="meta">新しい予約・キャンセル申請などの知らせは、主管理者全員と知らせ先のアドレスに届き、一般管理者には CC で届きます。下のボタンで、見本の知らせを1通送って届くか確かめられます（1時間に3回まで・実際の予約にはなりません）。</p>' +
-          '<button type="button" class="btn ghost" id="adTest">知らせのテストを送る</button><div id="adTestMsg"></div>' : '') +
+        // 知らせの宛先の説明は本番でも出す（見直し B37）。テストのボタンだけテスト環境
+        '<h2>知らせの宛先</h2><p class="meta">新しい予約・キャンセル申請・返金がまだの予約などの知らせは、主管理者全員と知らせ先のアドレスに届き、一般管理者には CC で届きます。' +
+        (testEnv ? '下のボタンで、見本の知らせを1通送って届くか確かめられます（1時間に3回まで・実際の予約にはなりません）。</p>' +
+          '<button type="button" class="btn ghost" id="adTest">知らせのテストを送る</button><div id="adTestMsg"></div>' : '</p>') +
         '<h2>操作の記録 <span class="muted">新しい順・100件</span></h2><div id="audit" class="scroll"></div>';
-      var after = function (r, text) { if (r.ok) { toast(text); adminsTab(); } else $('adMsg').innerHTML = notice(r); };
+      // 失敗は画面の上の欄だけでなく、下にも短く出す（押した場所から見えるように・見直し B18）
+      var after = function (r, text, b) { if (r.ok) { toast(text); adminsTab(); } else { if (b) unbusy(b); $('adMsg').innerHTML = notice(r); toast(r.message, true); } };
       if (testEnv) $('adTest').onclick = function () {
         busy($('adTest'), '送っています…');
         admin('api_adminSendTestNotice').then(function (r) {
           unbusy($('adTest'));
           if (!r.ok) { $('adTestMsg').innerHTML = notice(r); return; }
           var d = r.data;
-          $('adTestMsg').innerHTML = '<div class="notice ' + (d.status === 'SENT' ? 'ok' : 'err') + '">' +
-            (d.status === 'SENT' ? '送りました。受信箱を確かめてください（迷惑メールに入ることもあります）。' : '送れませんでした（' + esc(d.status) + '）。「要対応」を確かめてください。') +
+          $('adTestMsg').innerHTML = '<div class="notice ' + (d.status === 'SENT' || d.status === 'QUEUED' ? 'ok' : 'err') + '">' +
+            (d.status === 'SENT' ? '送りました。受信箱を確かめてください（迷惑メールに入ることもあります）。' : d.status === 'QUEUED' ? esc(MAIL_ST.QUEUED) : '送れませんでした（' + esc(MAIL_ST[d.status] || d.status) + '）。「要対応」を確かめてください。') +
             '<br>宛先: ' + esc(d.to.join('、')) + (d.cc.length ? '<br>CC: ' + esc(d.cc.join('、')) : '') + '</div>';
         });
       };
-      $('adAdd').onclick = function () { busy($('adAdd')); admin('api_adminAddAdmin', $('adEmail').value, $('adRole').value).then(function (r) { unbusy($('adAdd')); after(r, '追加しました'); }); };
+      $('adAdd').onclick = function () {
+        var em = $('adEmail').value.trim();
+        busy($('adAdd'));
+        admin('api_adminAddAdmin', em, $('adRole').value).then(function (r) {
+          unbusy($('adAdd'));
+          if (!r.ok) { after(r, ''); return; }
+          // 追加した人に伝える URL を出す（本人に案内のメールは届かない・見直し B21）
+          var url = (S.dash && S.dash.adminUrl) || (location.origin + location.pathname + '?page=admin');
+          adminsTab();
+          setTimeout(function () {
+            $('adMsg').innerHTML = '<div class="notice ok">' + esc(em) + ' を追加しました。<br>本人に、管理画面の URL を伝えてください（ログインは、その画面でメールアドレスを入れて届くリンクで行います）。<br><b>' + esc(url) + '</b></div>';
+          }, 600);
+        });
+      };
       each($('main'), 'data-role', function (email, b) {
-        if (confirm(email + ' の権限を「' + (b.getAttribute('data-to') === 'MASTER' ? '主管理者' : '一般管理者') + '」に変更しますか？（その人は、ログインし直しになります）'))
-          admin('api_adminSetRole', email, b.getAttribute('data-to')).then(function (r) { after(r, '権限を変更しました'); });
+        var to = b.getAttribute('data-to') === 'MASTER' ? '主管理者' : '一般管理者';
+        if (!confirm(email + ' の権限を「' + to + '」に変更しますか？\nその人はログアウトされ、ログインし直しになります。')) return;
+        busy(b); admin('api_adminSetRole', email, b.getAttribute('data-to')).then(function (r) { after(r, '権限を変更しました', b); });
       });
-      each($('main'), 'data-del', function (email) {
-        if (confirm(email + ' を管理者から削除しますか？')) admin('api_adminRemoveAdmin', email).then(function (r) { after(r, '削除しました'); });
+      each($('main'), 'data-del', function (email, b) {
+        if (!confirm(email + ' を管理者から削除しますか？\nその人はすぐログアウトされ、管理画面に入れなくなります（知らせのメールも届かなくなります）。')) return;
+        busy(b); admin('api_adminRemoveAdmin', email).then(function (r) { after(r, '削除しました', b); });
       });
-      admin('api_adminAuditLog').then(function (a) {
+      Promise.all([admin('api_adminAuditLog'), loadEvents(true)]).then(function (all) {
+        var a = all[0];
         if (!a.ok) return;
-        $('audit').innerHTML = '<table><tr><th>日時</th><th>操作した人</th><th>操作</th><th>対象</th><th>結果</th></tr>' + a.data.slice(0, 100).map(function (x) {
-          return '<tr><td class="num">' + esc(jst(x.at)) + '</td><td>' + esc(x.actor) + '</td><td>' + esc(x.action) + '</td><td>' + esc(x.target) + '</td><td>' + esc(x.result) + '</td></tr>';
+        // 操作は日本語で・対象が開催回なら日付で（2026-10-28 見直し A4）
+        var evs = {};
+        (S.events || []).forEach(function (e) { evs[e.id] = e; });
+        $('audit').innerHTML = '<table><tr><th>日時</th><th>操作</th><th>対象</th><th>操作した人</th></tr>' + a.data.slice(0, 100).map(function (x) {
+          var ev = evs[x.target], res = x.result === 'OK' ? '' : '（' + (x.result === 'PARTIAL' ? '一部失敗' : esc(x.result)) + '）';
+          return '<tr><td class="num">' + esc(jst(x.at)) + '</td><td>' + esc(ACT_L[x.action] || x.action) + res + '</td><td>' + (ev ? eventLine(ev) : esc(x.target)) + '</td><td>' + esc(x.actor) + '</td></tr>';
         }).join('') + '</table>';
       });
     });
