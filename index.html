@@ -1021,7 +1021,7 @@ var IMG = {
    * 2) 設定と開催日は1回の問い合わせ（api_getHome）。外のページでは、ページを読み込み始めた時点で問い合わせを始めている（HOME_PREFETCH）
    * 3) 最新が届いたら入れ替える。予約のときは必ずサーバーで最新の空席を確かめるので、前の内容で満席の回に予約が入ることはない
    */
-  var HOME_KEY = 'tenten:home:v2'; // v2: 開催日に到着の予定の札（arrivals）が入った（2026-10-28）
+  var HOME_KEY = 'tenten:home:v3'; // v3: ご利用の条件を変えた（前の保存を出さない・2026-10-28）
   var today0 = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
   var saved = null;
   try { saved = JSON.parse(localStorage.getItem(HOME_KEY) || 'null'); } catch (e) { saved = null; }
