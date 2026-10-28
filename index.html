@@ -272,6 +272,7 @@ var UI = {
       '<dt>場所</dt><dd>' + e(v.venue) + '</dd>' +
       '<dt>人数</dt><dd>' + e(v.partySize) + '名</dd>' +
       (v.arrivalLabel ? '<dt>到着の予定</dt><dd>' + e(v.arrivalLabel) + '<span class="muted">（目安）</span></dd>' : '') +
+      (v.vehicleLabel ? '<dt>車両</dt><dd>' + e(v.vehicleLabel) + '</dd>' : '') +
       '<dt>お支払い</dt><dd>' + UI.yen(v.amount) + '<span class="muted">（1名 ' + UI.yen(v.unitPrice) + '）</span></dd>' +
       '<dt>代表者</dt><dd>' + e(v.name) + ' 様</dd>' +
       (v.emailMasked ? '<dt>メール</dt><dd>' + e(v.emailMasked) + '</dd>' : '') + '</dl>';
@@ -409,12 +410,12 @@ var IMG = {
   .cal-d.sel .n, .cal-d.sel .m { color: #fff !important; }
   .cal-legend { display: flex; gap: 6px 16px; flex-wrap: wrap; font-size: 12px; color: var(--mute); margin-top: 10px; }
   .cal-legend b { color: var(--river); font-weight: 700; }
-  /* 到着の予定の札（4つずつ） */
-  .arr { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; outline: none; }
-  .arr button { appearance: none; min-height: 48px; border: 1px solid var(--hair); background: var(--white); border-radius: var(--r-s);
-    font: inherit; font-size: 15px; color: var(--ink); cursor: pointer; padding: 0 4px; }
-  .arr button.on { background: var(--ink); color: #fff; border-color: var(--ink); font-weight: 700; }
-  .field.bad .arr button { border-color: var(--bad); }
+  /* お越しの車両（車・バイクの台数を横に並べる。狭い画面では縦に） */
+  .veh { display: flex; flex-wrap: wrap; gap: 10px 20px; }
+  .veh-row { display: flex; align-items: center; gap: 10px; }
+  .veh-name { min-width: 3.2em; font-weight: 700; }
+  .veh .stepper button { width: 44px; }
+  .veh .stepper output { min-width: 56px; }
 
   /* 開催日: 時刻表のような行 */
   .month { font-family: var(--serif); font-size: 15px; font-weight: 700; color: var(--mute); margin: 24px 0 0; padding-bottom: 6px; }
@@ -536,11 +537,19 @@ var IMG = {
         <div class="hint" id="partyHint"></div>
       </div>
 
-      <div class="field" id="f-arrival">
-        <label id="arrivalLabel">到着の予定<span class="req">必須</span></label>
-        <div class="arr" id="arrival" role="radiogroup" aria-labelledby="arrivalLabel" aria-describedby="h-arrival e-arrival" tabindex="-1"></div>
-        <div class="hint" id="h-arrival">目安で大丈夫です（時間内のフリータイムなので、この時間に着かなくても利用できます）。</div>
-        <div class="ferr" id="e-arrival"></div>
+      <div class="field" id="f-vehicle">
+        <label id="vehicleLabel">お越しの車両<span class="opt">駐車場の準備のため</span></label>
+        <div class="veh">
+          <div class="veh-row"><span class="veh-name">車</span>
+            <div class="stepper" role="group" aria-label="車の台数">
+              <button type="button" id="carMinus" aria-label="車を1台へらす">−</button><output id="carOut" aria-live="polite">1台</output><button type="button" id="carPlus" aria-label="車を1台ふやす">＋</button>
+            </div></div>
+          <div class="veh-row"><span class="veh-name">バイク</span>
+            <div class="stepper" role="group" aria-label="バイクの台数">
+              <button type="button" id="bikeMinus" aria-label="バイクを1台へらす">−</button><output id="bikeOut" aria-live="polite">0台</output><button type="button" id="bikePlus" aria-label="バイクを1台ふやす">＋</button>
+            </div></div>
+        </div>
+        <div class="hint">電車・送迎・ほかの組と乗り合わせの場合は、どちらも 0台 にしてください。</div>
       </div>
 
       <div class="receipt">
@@ -576,6 +585,12 @@ var IMG = {
         <input id="phone" type="tel" autocomplete="tel" inputmode="tel" maxlength="20" required placeholder="例）090-1234-5678" aria-describedby="h-phone e-phone">
         <div class="hint" id="h-phone">当日、連絡が必要なときだけ使います。</div>
         <div class="ferr" id="e-phone"></div>
+      </div>
+      <div class="field" id="f-arrival">
+        <label for="arrival">到着の予定<span class="req">必須</span></label>
+        <select id="arrival" required aria-describedby="h-arrival e-arrival"></select>
+        <div class="hint" id="h-arrival">目安で大丈夫です（時間内のフリータイムなので、この時間に着かなくても利用できます）。</div>
+        <div class="ferr" id="e-arrival"></div>
       </div>
 
       <div class="policy">
@@ -651,7 +666,7 @@ var IMG = {
     get: function () { try { return JSON.parse(sessionStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { return null; } },
     save: function () {
       if (!chosen) return;
-      var d = { eventId: chosen.id, party: party, arrival: arrival };
+      var d = { eventId: chosen.id, party: party, arrival: arrival, cars: cars, bikes: bikes };
       FIELDS.forEach(function (f) { d[f] = $(f).value; });
       try { sessionStorage.setItem(SAVE_KEY, JSON.stringify(d)); } catch (e) {}
     },
@@ -762,6 +777,8 @@ var IMG = {
     var slots = e.arrivals && e.arrivals.length ? e.arrivals : slotsOf(e);
     arrival = draft.eventId === e.id && slots.some(function (s) { return s.value === draft.arrival; }) ? draft.arrival : '';
     renderArrival();
+    if (typeof draft.cars === 'number') cars = draft.cars;
+    if (typeof draft.bikes === 'number') bikes = draft.bikes;
     updateParty();
     showErr('');
     show('formView');
@@ -774,6 +791,7 @@ var IMG = {
     $('partyHint').textContent = party >= cfg.maxParty ? cfg.maxParty + '名より多い場合は、Instagram の DM でご相談ください。' : '';
     $('unit').textContent = '1名 ' + yen(chosen.price) + ' × ' + party + '名';
     $('total').textContent = yen(chosen.price * party);
+    updateVehicles(); // 車・バイクは人数まで
   }
   /** 札が届いていないとき（古い保存の内容など）だけ、サーバーの Events.arrivalSlots と同じ決まりで作る */
   function slotsOf(e) {
@@ -784,17 +802,27 @@ var IMG = {
     if (!out.length) out.push(e.start_time);
     return out.map(function (v) { var p = v.split(':'); return { value: v, label: p[1] === '00' ? Number(p[0]) + '時台' : Number(p[0]) + ':' + p[1] + '頃' }; });
   }
-  /** 到着の予定の札（1時間ごと・終わる1時間前まで。札はサーバーが回ごとに作る） */
+  /** 到着の予定（プルダウン・1時間ごと・終わる1時間前まで。選びかたはサーバーが回ごとに作る・2026-10-28 ユーザー依頼で札からプルダウンへ） */
   function renderArrival() {
     var slots = chosen.arrivals && chosen.arrivals.length ? chosen.arrivals : slotsOf(chosen);
-    $('arrival').innerHTML = slots.map(function (s) {
-      var on = s.value === arrival;
-      return '<button type="button" role="radio" aria-checked="' + on + '" data-arr="' + esc(s.value) + '"' + (on ? ' class="on"' : '') + '>' + esc(s.label) + '</button>';
+    $('arrival').innerHTML = '<option value="">選んでください</option>' + slots.map(function (s) {
+      return '<option value="' + esc(s.value) + '"' + (s.value === arrival ? ' selected' : '') + '>' + esc(s.label) + '</option>';
     }).join('');
-    Array.prototype.forEach.call($('arrival').querySelectorAll('[data-arr]'), function (b) {
-      b.onclick = function () { arrival = b.getAttribute('data-arr'); renderArrival(); setErr('arrival', ''); Draft.save(); };
-    });
   }
+  $('arrival').onchange = function () { arrival = $('arrival').value; if (arrival) setErr('arrival', ''); Draft.save(); };
+
+  /* ---------- お越しの車両（車・バイク。0台〜人数まで・はじめは車1台） ---------- */
+  var cars = 1, bikes = 0;
+  function updateVehicles() {
+    cars = Math.min(cars, party); bikes = Math.min(bikes, party);
+    $('carOut').textContent = cars + '台'; $('bikeOut').textContent = bikes + '台';
+    $('carMinus').disabled = cars <= 0; $('carPlus').disabled = cars >= party;
+    $('bikeMinus').disabled = bikes <= 0; $('bikePlus').disabled = bikes >= party;
+  }
+  $('carMinus').onclick = function () { if (cars > 0) { cars--; updateVehicles(); Draft.save(); } };
+  $('carPlus').onclick = function () { if (cars < party) { cars++; updateVehicles(); Draft.save(); } };
+  $('bikeMinus').onclick = function () { if (bikes > 0) { bikes--; updateVehicles(); Draft.save(); } };
+  $('bikePlus').onclick = function () { if (bikes < party) { bikes++; updateVehicles(); Draft.save(); } };
   $('minus').onclick = function () { if (party > 1) { party--; updateParty(); Draft.save(); } };
   $('plus').onclick = function () { if (party < cfg.maxParty) { party++; updateParty(); Draft.save(); } };
 
@@ -843,14 +871,14 @@ var IMG = {
     ev.preventDefault();
     showErr('');
     Draft.save(); // 自動入力（オートフィル）で入れた値も残す
-    var bad = ['arrival'].concat(FIELDS, ['agree']).filter(function (f) { return !check(f); });
+    var bad = FIELDS.concat(['arrival', 'agree']).filter(function (f) { return !check(f); });
     if (bad.length) { scrollToEl($('f-' + bad[0])); if (bad[0] !== 'agree') $(bad[0]).focus(); return; }
     var btn = $('submit');
     btn.disabled = true; btn.innerHTML = '<span class="spinner" aria-hidden="true" style="border-color:rgba(255,255,255,.35);border-top-color:#fff"></span>席を確保しています…';
     var botToken = Bot.token();
     if (Bot.on && !botToken) { btn.disabled = false; btn.textContent = 'お支払いへ進む'; showErr('「人間であることの確認」を済ませてください。'); return; }
     UI.call('api_startBooking', {
-      eventId: chosen.id, partySize: party, name: $('name').value, kana: $('kana').value, arrival: arrival,
+      eventId: chosen.id, partySize: party, name: $('name').value, kana: $('kana').value, arrival: arrival, cars: cars, bikes: bikes,
       email: $('email').value, emailConfirm: $('email2').value, phone: $('phone').value, agree: true, botToken: botToken
     }).then(function (res) {
       btn.disabled = false; btn.textContent = 'お支払いへ進む';
