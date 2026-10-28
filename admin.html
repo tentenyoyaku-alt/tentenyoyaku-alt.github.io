@@ -677,6 +677,8 @@ var UI = {
       item(d.attention, '支払いの要確認', '支払い済みですが自動で確定できなかった予約です。お客様に連絡してください。', 'issues', '内容を見る');
       item(d.mailFailures, 'メールの送信失敗（7日間）', '確認メールなどが届いていない可能性があります。', 'issues', '内容を見る');
       item(d.errors, '処理エラー（7日間）', '画面や自動処理で起きたエラーの記録です。', 'issues', '内容を見る');
+      item(d.queuedMails, 'メールの送信待ち', '今日のメールの送信の上限（Gmail は1日100通）に届いたため、枠が戻りしだい自動で送ります（10分ごとに確認）。何もしなくて大丈夫です。' +
+        (d.mailLeft >= 0 ? '（今の残り ' + d.mailLeft + '通）' : ''), 'home', '最新にする', true);
       var drafts = d.today.concat(d.upcoming).filter(function (e) { return e.status === 'DRAFT'; }).length;
       if (isMaster()) item(drafts, '未公開の開催回', '内容を確認して公開すると、お客様が予約できるようになります。', 'events', '開催回を見る', true);
       var card = function (e, isToday) {
