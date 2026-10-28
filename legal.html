@@ -252,6 +252,7 @@ var UI = {
       '<dt>内容</dt><dd>' + e(v.eventTitle) + '</dd>' +
       '<dt>場所</dt><dd>' + e(v.venue) + '</dd>' +
       '<dt>人数</dt><dd>' + e(v.partySize) + '名</dd>' +
+      (v.arrivalLabel ? '<dt>到着の予定</dt><dd>' + e(v.arrivalLabel) + '<span class="muted">（目安）</span></dd>' : '') +
       '<dt>お支払い</dt><dd>' + UI.yen(v.amount) + '<span class="muted">（1名 ' + UI.yen(v.unitPrice) + '）</span></dd>' +
       '<dt>代表者</dt><dd>' + e(v.name) + ' 様</dd>' +
       (v.emailMasked ? '<dt>メール</dt><dd>' + e(v.emailMasked) + '</dd>' : '') + '</dl>';
@@ -463,8 +464,8 @@ var UI = {
 
     <h3>1. お預かりする情報</h3>
     <ul>
-      <li>代表者のお名前・メールアドレス・電話番号</li>
-      <li>ご予約の内容（開催日時・人数・金額・予約番号・お支払いと返金の状況・キャンセルの申請の内容）</li>
+      <li>代表者のお名前（フリガナを含む）・メールアドレス・電話番号</li>
+      <li>ご予約の内容（開催日時・人数・到着の予定・金額・予約番号・お支払いと返金の状況・キャンセルの申請の内容）</li>
       <li>当日の受付の記録</li>
       <li><b>クレジットカードの番号や PayPay のアカウントの情報は、当方では受け取りません。</b>お支払いの情報は決済代行会社の Stripe（ストライプ）や PayPay が直接受け取り、管理します。</li>
     </ul>
