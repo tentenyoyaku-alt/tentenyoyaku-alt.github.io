@@ -252,6 +252,7 @@ var UI = {
       '<dt>内容</dt><dd>' + e(v.eventTitle) + '</dd>' +
       '<dt>場所</dt><dd>' + e(v.venue) + '</dd>' +
       '<dt>人数</dt><dd>' + e(v.partySize) + '名</dd>' +
+      (v.arrivalLabel ? '<dt>到着の予定</dt><dd>' + e(v.arrivalLabel) + '<span class="muted">（目安）</span></dd>' : '') +
       '<dt>お支払い</dt><dd>' + UI.yen(v.amount) + '<span class="muted">（1名 ' + UI.yen(v.unitPrice) + '）</span></dd>' +
       '<dt>代表者</dt><dd>' + e(v.name) + ' 様</dd>' +
       (v.emailMasked ? '<dt>メール</dt><dd>' + e(v.emailMasked) + '</dd>' : '') + '</dl>';
@@ -452,6 +453,7 @@ var UI = {
   .ci .btn { min-width: 120px; min-height: 52px; font-size: 16px; }
   .ci.done .big { color: var(--mute); }
   .ci-sum { font-family: var(--serif); font-size: 22px; font-weight: 700; }
+  .ci-arr { font-family: var(--serif); font-size: 15px; margin: 16px 0 0; padding-bottom: 4px; border-bottom: 1px solid var(--hair); color: var(--river); }
 
   table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   th, td { border-bottom: 1px solid var(--hair); padding: 8px 6px 8px 0; text-align: left; vertical-align: top; }
@@ -687,7 +689,7 @@ var UI = {
             '<div class="meta">' + esc(e.title) + '・中止の理由: ' + esc(e.cancelReason) + (e.toRefund ? '・<b>返金待ち ' + e.toRefund + '件</b>' : '・返金済み') + '</div></div>';
         }
         return '<div class="evcard' + (isToday ? ' today' : '') + '"><div class="ev-h"><span class="d">' + esc(e.dateLabel) + '</span><span class="t num">' + esc(e.start_time) + '〜' + esc(e.end_time) + '</span>' + evChip(e.status) + '</div>' +
-          '<div class="meta">' + esc(e.title) + '・1名 ' + yen(e.price) + '</div>' + seatHtml(e, isToday) +
+          '<div class="meta">' + esc(e.title) + '・1名 ' + yen(e.price) + '</div>' + seatHtml(e, isToday) + arrivalsHtml(e) +
           '<div class="btns">' + (isToday ? '<button type="button" class="btn" data-ci="' + esc(e.id) + '">受付を開く</button>' : '') +
           '<button type="button" class="btn ghost small" data-res="' + esc(e.id) + '">予約一覧</button>' + (isToday ? '' : '<button type="button" class="btn ghost small" data-ci="' + esc(e.id) + '">受付</button>') + '</div></div>';
       };
@@ -721,7 +723,7 @@ var UI = {
         (S.events.length ? S.events.map(function (e) {
           return '<div class="evcard" id="ev-' + esc(e.id) + '"><div class="ev-h"><span class="d">' + esc(e.dateLabel) + '</span><span class="t num">' + esc(e.start_time) + '〜' + esc(e.end_time) + '</span>' + evChip(e.status) + '</div>' +
             '<div class="meta">' + esc(e.title) + '・1人あたり ' + yen(e.price) + '（入場料込み）' + (e.description ? '・補足: ' + esc(e.description) : '') + '</div>' +
-            (e.status !== 'CANCELLED' ? seatHtml(e, false) : '<div class="meta">中止の理由: ' + esc(e.cancelReason) + (e.toRefund ? '・<b>返金待ち ' + e.toRefund + '件</b>' : '') + '</div>') +
+            (e.status !== 'CANCELLED' ? seatHtml(e, false) + arrivalsHtml(e) : '<div class="meta">中止の理由: ' + esc(e.cancelReason) + (e.toRefund ? '・<b>返金待ち ' + e.toRefund + '件</b>' : '') + '</div>') +
             (master ? '<div class="btns">' +
               (e.status === 'DRAFT' ? '<button type="button" class="btn small" data-pub="' + esc(e.id) + '">内容を確認して公開</button>' : '') +
               (e.status === 'PUBLISHED' ? '<button type="button" class="btn ghost small" data-unpub="' + esc(e.id) + '">非公開にする</button>' : '') +
@@ -1029,8 +1031,10 @@ var UI = {
   /* ---------- 予約 ---------- */
   function resRow(r, extra) {
     var tel = String(r.phone || '').replace(/[^\d+]/g, '');
-    return '<div class="res" data-name="' + esc((r.name + ' ' + r.number).toLowerCase().replace(/\s+/g, '')) + '">' +
-      '<div><span class="name">' + esc(r.name) + '</span><span class="ppl num">' + esc(r.party_size) + '名</span><div class="meta num">' + esc(r.number) + '</div></div>' +
+    return '<div class="res" data-name="' + esc(searchKey(r)) + '">' +
+      '<div><span class="name">' + esc(r.name) + '</span><span class="ppl num">' + esc(r.party_size) + '名</span>' +
+      (r.kana ? '<div class="meta">' + esc(r.kana) + '</div>' : '') +
+      '<div class="meta num">' + esc(r.number) + (r.arrivalLabel ? '・到着 ' + esc(r.arrivalLabel) : '') + '</div></div>' +
       '<div><div class="st">' + st('予約', r.status) + st('支払い', r.payment_status) + st('返金', r.refund_status) +
       (r.checked_in ? '<span class="chip ok">受付済</span>' : '') + '</div><div class="meta num">' + esc(r.eventLabel) + '・' + yen(r.amount) + '</div></div>' +
       '<div class="meta">' + esc(r.email) + '<br>' + (tel ? '<a href="tel:' + esc(tel) + '">' + esc(r.phone) + '</a>' : esc(r.phone)) + '</div>' +
@@ -1041,7 +1045,16 @@ var UI = {
         (r.confirm_mail_status === 'FAILED' ? '<b style="color:var(--bad)">確認メール: 送信失敗</b>' : '') + '</div>' : '') +
       (extra ? '<div class="wide">' + extra + '</div>' : '') + '</div>';
   }
-  var THEAD = '<div class="thead"><span>お名前・人数・予約番号</span><span>状態・回・金額</span><span>連絡先</span></div>';
+  var THEAD = '<div class="thead"><span>お名前・人数・予約番号・到着</span><span>状態・回・金額</span><span>連絡先</span></div>';
+  /** 絞り込みの文字: 名前・予約番号・フリガナ（ひらがなで入れてもカタカナに当たるよう、カタカナに直したものも入れる） */
+  function kata(s) { return String(s || '').replace(/[ぁ-ゖ]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) + 0x60); }); }
+  function searchKey(r) { return (r.name + ' ' + r.number + ' ' + (r.kana || '')).toLowerCase().replace(/[\s　]+/g, ''); }
+  function searchQ(v) { return kata(String(v || '').toLowerCase().replace(/[\s　]+/g, '')); }
+  /** 到着の予定ごとの組・人数（例: 12時台 2組4名・13時台 1組2名） */
+  function arrivalsHtml(e) {
+    if (!e.arrivals || !e.arrivals.length) return '';
+    return '<div class="meta">到着の予定: ' + e.arrivals.map(function (a) { return esc(a.label) + ' <b>' + a.groups + '組' + a.people + '名</b>'; }).join('・') + '</div>';
+  }
   function bindResend(root) {
     each(root, 'data-resend', function (id, b) {
       if (!confirm('確認メールを再送します。前に送った確認のリンクは使えなくなります。')) return;
@@ -1076,9 +1089,9 @@ var UI = {
         filter();
       };
       var filter = function () {
-        var q = $('q').value.toLowerCase().replace(/\s+/g, ''), n = 0;
+        var q = searchQ($('q').value), n = 0;
         Array.prototype.forEach.call($('resList').querySelectorAll('.res'), function (c) {
-          var hit = !q || c.getAttribute('data-name').indexOf(q) >= 0; c.classList.toggle('hidden', !hit); if (hit) n++;
+          var hit = !q || kata(c.getAttribute('data-name')).indexOf(q) >= 0; c.classList.toggle('hidden', !hit); if (hit) n++;
         });
         if (q && !n) $('resSum').innerHTML += '<br>「' + esc($('q').value) + '」はこの回にありません。「全部の回から探す」を試してください。';
       };
@@ -1113,16 +1126,21 @@ var UI = {
         $('ciDay').innerHTML = e && e.date !== today ? '<div class="notice info">今日の回ではありません（' + esc(e.dateLabel) + '）。</div>' : '';
         admin('api_adminListReservations', $('ciEv').value).then(function (res) {
           if (!res.ok) { $('ciList').innerHTML = notice(res); return; }
+          // 到着の予定の早い順（同じ時間の中はフリガナ順・2026-10-28）
           var rows = res.data.filter(function (r) { return r.status === 'CONFIRMED' || r.status === 'CANCEL_REQUESTED'; })
-            .sort(function (a, b) { return a.name.localeCompare(b.name, 'ja'); });
+            .sort(function (a, b) { return (a.arrival || '99') < (b.arrival || '99') ? -1 : (a.arrival || '99') > (b.arrival || '99') ? 1 : (a.kana || a.name).localeCompare(b.kana || b.name, 'ja'); });
           var total = 0, done = 0, groups = 0;
           rows.forEach(function (r) { total += Number(r.party_size); if (r.checked_in) { done += Number(r.party_size); groups++; } });
           $('ciSum').textContent = '受付済 ' + done + ' / ' + total + '名';
           $('ciSub').textContent = rows.length + '組中 ' + groups + '組が受付済・未受付 ' + (total - done) + '名';
+          var lastArr = null;
           $('ciList').innerHTML = rows.map(function (r) {
             var tel = String(r.phone || '').replace(/[^\d+]/g, '');
-            return '<div class="ci' + (r.checked_in ? ' done' : '') + '" data-name="' + esc((r.name + ' ' + r.number).toLowerCase().replace(/\s+/g, '')) + '">' +
+            var head = r.arrival !== lastArr ? '<h3 class="ci-arr">' + esc(r.arrivalLabel || '到着の予定なし') + '</h3>' : '';
+            lastArr = r.arrival;
+            return head + '<div class="ci' + (r.checked_in ? ' done' : '') + '" data-name="' + esc(searchKey(r)) + '">' +
               '<div><div class="big">' + esc(r.name) + '　<span class="num">' + esc(r.party_size) + '名</span></div>' +
+              (r.kana ? '<div class="meta">' + esc(r.kana) + '</div>' : '') +
               '<div><span class="chip ' + (r.checked_in ? 'ok">受付済' : 'wait">未受付') + '</span>' + (r.status === 'CANCEL_REQUESTED' ? ' <span class="chip wait">キャンセル申請中</span>' : '') + '</div>' +
               '<div class="meta num">' + esc(r.number) + '・' + (tel ? '<a href="tel:' + esc(tel) + '">' + esc(r.phone) + '</a>' : esc(r.phone)) + '</div></div>' +
               (r.checked_in ? '<button type="button" class="btn ghost small" data-undo="' + esc(r.id) + '" aria-label="' + esc(r.name) + ' 様の受付を取り消す">取り消す</button>'
@@ -1143,8 +1161,8 @@ var UI = {
         });
       };
       var filter = function () {
-        var q = $('ciQ').value.toLowerCase().replace(/\s+/g, '');
-        Array.prototype.forEach.call($('ciList').querySelectorAll('.ci'), function (c) { c.classList.toggle('hidden', !!q && c.getAttribute('data-name').indexOf(q) < 0); });
+        var q = searchQ($('ciQ').value);
+        Array.prototype.forEach.call($('ciList').querySelectorAll('.ci'), function (c) { c.classList.toggle('hidden', !!q && kata(c.getAttribute('data-name')).indexOf(q) < 0); });
       };
       $('ciQ').oninput = filter;
       $('ciEv').onchange = function () { $('ciQ').value = ''; load(false); };
