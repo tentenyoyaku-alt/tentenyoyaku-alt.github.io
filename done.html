@@ -142,6 +142,7 @@ ul.list li { margin: 4px 0; }
 .steps { display: flex; margin: 20px 0 0; padding: 0; list-style: none; gap: 6px; }
 .steps li { flex: 1; font-size: 12px; color: var(--mute); padding-top: 8px; border-top: 2px solid var(--hair); }
 .steps li.done { border-top-color: var(--river); color: var(--river); }
+.steps li.done::before { content: "✓ "; } /* 済は色だけでなく印でも */
 .steps li.now { border-top-color: var(--ink); color: var(--ink); font-weight: 700; }
 
 /* 入力 */
@@ -237,9 +238,11 @@ var UI = {
   guideHtml: function (g, opt) {
     opt = opt || {};
     var e = UI.esc;
+    // noPlace: 場所・アクセスを出さない（予約ページは写真の下に同じ物があるため・2026-10-28）。受付の目印だけ残す
     return '<section class="guide"><h3>' + (opt.title || '当日のご案内') + '</h3>' +
-      '<dl class="kv"><dt>場所</dt><dd>' + e(g.venue) + '<div style="margin-top:8px">' + UI.mapLink(g) + '</div></dd>' +
-      '<dt>アクセス</dt><dd>' + g.access.map(e).join('<br>') + '</dd>' +
+      '<dl class="kv">' + (opt.noPlace ? '<dt>受付</dt><dd>' + e(g.access[2] || '') + '</dd>'
+        : '<dt>場所</dt><dd>' + e(g.venue) + '<div style="margin-top:8px">' + UI.mapLink(g) + '</div></dd>' +
+          '<dt>アクセス</dt><dd>' + g.access.map(e).join('<br>') + '</dd>') +
       '<dt>持ち物</dt><dd>' + g.bring.map(e).join('・') + '<div class="muted" style="margin-top:4px">' + g.notes.map(e).join('／') + '</div></dd></dl>' +
       '</section>';
   },
@@ -262,7 +265,7 @@ var UI = {
       (v.emailMasked ? '<dt>メール</dt><dd>' + e(v.emailMasked) + '</dd>' : '') + '</dl>';
     if (v.upcoming && g) {
       html += '<div class="row-btns">' +
-        '<a class="btn ink small" target="_blank" rel="noopener" href="' + e(UI.calendarUrl({
+        '<a class="btn ghost small" target="_blank" rel="noopener" href="' + e(UI.calendarUrl({
           date: v.date, start: v.start, end: v.end, title: 'テントサウナ Ten.Ten（' + v.number + '）', location: g.venue,
           details: '予約番号 ' + v.number + '\n持ち物: ' + g.bring.join('・') + '\n地図: ' + g.mapUrl })) + '">Google カレンダーに追加</a></div>';
       // 地図は下の「当日のご案内」の場所の行にある（同じボタンを2つ出さない）
@@ -374,7 +377,7 @@ var UI = {
         (x.vehicleLabel ? '<dt>車両</dt><dd>' + esc(x.vehicleLabel) + '</dd>' : '') +
         '<dt>お支払い</dt><dd>' + UI.yen(x.amount) + '<span class="muted">（お支払い済み）</span></dd></dl>';
       if (g) {
-        extra += '<a class="btn ink block" target="_blank" rel="noopener" href="' + esc(UI.calendarUrl({
+        extra += '<a class="btn ghost block" target="_blank" rel="noopener" href="' + esc(UI.calendarUrl({
           date: x.date, start: x.start, end: x.end, title: 'テントサウナ Ten.Ten（' + d.number + '）', location: g.venue,
           details: '予約番号 ' + d.number + '\n持ち物: ' + g.bring.join('・') + '\n地図: ' + g.mapUrl })) + '">Google カレンダーに追加</a>';
       }
