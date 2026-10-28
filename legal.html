@@ -264,8 +264,8 @@ var UI = {
       html += '<div class="row-btns">' +
         '<a class="btn ink small" target="_blank" rel="noopener" href="' + e(UI.calendarUrl({
           date: v.date, start: v.start, end: v.end, title: 'テントサウナ Ten.Ten（' + v.number + '）', location: g.venue,
-          details: '予約番号 ' + v.number + '\n持ち物: ' + g.bring.join('・') + '\n地図: ' + g.mapUrl })) + '">Google カレンダーに追加</a>' +
-        UI.mapLink(g) + '</div>';
+          details: '予約番号 ' + v.number + '\n持ち物: ' + g.bring.join('・') + '\n地図: ' + g.mapUrl })) + '">Google カレンダーに追加</a></div>';
+      // 地図は下の「当日のご案内」の場所の行にある（同じボタンを2つ出さない）
     }
     return html;
   },
@@ -402,7 +402,6 @@ var UI = {
       <li>中学生以上の方がご利用いただけます。18歳未満の方は、保護者の同伴が必要です。</li>
       <li>次に当てはまる方はご利用いただけません。当日にスタッフが判断した場合も、ご利用をお断りすることがあります（この場合の返金はいたしません）。
         <ul>
-          <li>飲酒をされた方</li>
           <li>体調のすぐれない方、発熱のある方</li>
           <li>スタッフの案内や安全のための指示に従っていただけない方</li>
         </ul>
