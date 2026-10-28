@@ -416,6 +416,9 @@ var IMG = {
   .veh-name { min-width: 3.2em; font-weight: 700; }
   .veh .stepper button { width: 44px; }
   .veh .stepper output { min-width: 56px; }
+  .ride { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--hair); border-radius: var(--r-s); background: var(--white); display: grid; gap: 10px; }
+  .ride-q { font-weight: 700; font-size: 14.5px; }
+  .field.bad .ride { border-color: var(--bad); }
 
   /* 開催日: 時刻表のような行 */
   .month { font-family: var(--serif); font-size: 15px; font-weight: 700; color: var(--mute); margin: 24px 0 0; padding-bottom: 6px; }
@@ -549,7 +552,13 @@ var IMG = {
               <button type="button" id="bikeMinus" aria-label="バイクを1台へらす">−</button><output id="bikeOut" aria-live="polite">0台</output><button type="button" id="bikePlus" aria-label="バイクを1台ふやす">＋</button>
             </div></div>
         </div>
-        <div class="hint">電車・送迎・ほかの組と乗り合わせの場合は、どちらも 0台 にしてください。</div>
+        <div class="hint">車とバイクの合計は人数までです。車もバイクも使わない場合は、どちらも 0台 にしてください。</div>
+        <div id="rideBox" class="ride hidden" role="radiogroup" aria-labelledby="rideQ">
+          <div class="ride-q" id="rideQ">車もバイクも使わない場合、どうやってお越しになりますか？<span class="req">必須</span></div>
+          <label class="check"><input type="radio" name="ride" value="carpool"> ほかの組の車に乗り合わせ</label>
+          <label class="check"><input type="radio" name="ride" value="dropoff"> 家族・知人に送ってもらう</label>
+        </div>
+        <div class="ferr" id="e-vehicle"></div>
       </div>
 
       <div class="receipt">
@@ -666,7 +675,7 @@ var IMG = {
     get: function () { try { return JSON.parse(sessionStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { return null; } },
     save: function () {
       if (!chosen) return;
-      var d = { eventId: chosen.id, party: party, arrival: arrival, cars: cars, bikes: bikes };
+      var d = { eventId: chosen.id, party: party, arrival: arrival, cars: cars, bikes: bikes, ride: ride };
       FIELDS.forEach(function (f) { d[f] = $(f).value; });
       try { sessionStorage.setItem(SAVE_KEY, JSON.stringify(d)); } catch (e) {}
     },
@@ -779,6 +788,7 @@ var IMG = {
     renderArrival();
     if (typeof draft.cars === 'number') cars = draft.cars;
     if (typeof draft.bikes === 'number') bikes = draft.bikes;
+    if (draft.ride === 'carpool' || draft.ride === 'dropoff') ride = draft.ride;
     updateParty();
     showErr('');
     show('formView');
@@ -811,18 +821,34 @@ var IMG = {
   }
   $('arrival').onchange = function () { arrival = $('arrival').value; if (arrival) setErr('arrival', ''); Draft.save(); };
 
-  /* ---------- お越しの車両（車・バイク。0台〜人数まで・はじめは車1台） ---------- */
-  var cars = 1, bikes = 0;
+  /* ---------- お越しの車両（車・バイク。はじめは車1台）。1台に1人は運転する人がいるので、車とバイクの合計は人数まで ---------- */
+  var cars = 1, bikes = 0, ride = '';
   function updateVehicles() {
-    cars = Math.min(cars, party); bikes = Math.min(bikes, party);
+    // 人数を減らして合計が人数を超えたら、バイクから減らす（車を残す）
+    while (cars + bikes > party) { if (bikes > 0) bikes--; else cars--; }
+    var full = cars + bikes >= party;
     $('carOut').textContent = cars + '台'; $('bikeOut').textContent = bikes + '台';
-    $('carMinus').disabled = cars <= 0; $('carPlus').disabled = cars >= party;
-    $('bikeMinus').disabled = bikes <= 0; $('bikePlus').disabled = bikes >= party;
+    $('carMinus').disabled = cars <= 0; $('carPlus').disabled = full;
+    $('bikeMinus').disabled = bikes <= 0; $('bikePlus').disabled = full;
+    // 車もバイクも0台のときだけ、来かたを聞く
+    var none = cars + bikes === 0;
+    $('rideBox').classList.toggle('hidden', !none);
+    Array.prototype.forEach.call(document.querySelectorAll('input[name=ride]'), function (r) { r.checked = none && r.value === ride; });
+    if (!none) setVehErr('');
   }
+  function setVehErr(msg) { $('f-vehicle').classList.toggle('bad', !!msg); $('e-vehicle').textContent = msg; }
+  function checkVehicles() {
+    var msg = cars + bikes === 0 && !ride ? '車もバイクも使わない場合の、お越しの方法を選んでください。' : '';
+    setVehErr(msg);
+    return !msg;
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('input[name=ride]'), function (r) {
+    r.onchange = function () { ride = r.value; setVehErr(''); Draft.save(); };
+  });
   $('carMinus').onclick = function () { if (cars > 0) { cars--; updateVehicles(); Draft.save(); } };
-  $('carPlus').onclick = function () { if (cars < party) { cars++; updateVehicles(); Draft.save(); } };
+  $('carPlus').onclick = function () { if (cars + bikes < party) { cars++; updateVehicles(); Draft.save(); } };
   $('bikeMinus').onclick = function () { if (bikes > 0) { bikes--; updateVehicles(); Draft.save(); } };
-  $('bikePlus').onclick = function () { if (bikes < party) { bikes++; updateVehicles(); Draft.save(); } };
+  $('bikePlus').onclick = function () { if (cars + bikes < party) { bikes++; updateVehicles(); Draft.save(); } };
   $('minus').onclick = function () { if (party > 1) { party--; updateParty(); Draft.save(); } };
   $('plus').onclick = function () { if (party < cfg.maxParty) { party++; updateParty(); Draft.save(); } };
 
@@ -871,6 +897,7 @@ var IMG = {
     ev.preventDefault();
     showErr('');
     Draft.save(); // 自動入力（オートフィル）で入れた値も残す
+    if (!checkVehicles()) { scrollToEl($('f-vehicle')); return; }
     var bad = FIELDS.concat(['arrival', 'agree']).filter(function (f) { return !check(f); });
     if (bad.length) { scrollToEl($('f-' + bad[0])); if (bad[0] !== 'agree') $(bad[0]).focus(); return; }
     var btn = $('submit');
@@ -878,7 +905,7 @@ var IMG = {
     var botToken = Bot.token();
     if (Bot.on && !botToken) { btn.disabled = false; btn.textContent = 'お支払いへ進む'; showErr('「人間であることの確認」を済ませてください。'); return; }
     UI.call('api_startBooking', {
-      eventId: chosen.id, partySize: party, name: $('name').value, kana: $('kana').value, arrival: arrival, cars: cars, bikes: bikes,
+      eventId: chosen.id, partySize: party, name: $('name').value, kana: $('kana').value, arrival: arrival, cars: cars, bikes: bikes, ride: cars + bikes === 0 ? ride : '',
       email: $('email').value, emailConfirm: $('email2').value, phone: $('phone').value, agree: true, botToken: botToken
     }).then(function (res) {
       btn.disabled = false; btn.textContent = 'お支払いへ進む';
