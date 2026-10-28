@@ -253,6 +253,7 @@ var UI = {
       '<dt>場所</dt><dd>' + e(v.venue) + '</dd>' +
       '<dt>人数</dt><dd>' + e(v.partySize) + '名</dd>' +
       (v.arrivalLabel ? '<dt>到着の予定</dt><dd>' + e(v.arrivalLabel) + '<span class="muted">（目安）</span></dd>' : '') +
+      (v.vehicleLabel ? '<dt>車両</dt><dd>' + e(v.vehicleLabel) + '</dd>' : '') +
       '<dt>お支払い</dt><dd>' + UI.yen(v.amount) + '<span class="muted">（1名 ' + UI.yen(v.unitPrice) + '）</span></dd>' +
       '<dt>代表者</dt><dd>' + e(v.name) + ' 様</dd>' +
       (v.emailMasked ? '<dt>メール</dt><dd>' + e(v.emailMasked) + '</dd>' : '') + '</dl>';
@@ -1034,7 +1035,7 @@ var UI = {
     return '<div class="res" data-name="' + esc(searchKey(r)) + '">' +
       '<div><span class="name">' + esc(r.name) + '</span><span class="ppl num">' + esc(r.party_size) + '名</span>' +
       (r.kana ? '<div class="meta">' + esc(r.kana) + '</div>' : '') +
-      '<div class="meta num">' + esc(r.number) + (r.arrivalLabel ? '・到着 ' + esc(r.arrivalLabel) : '') + '</div></div>' +
+      '<div class="meta num">' + esc(r.number) + (r.arrivalLabel ? '・到着 ' + esc(r.arrivalLabel) : '') + (r.vehicleLabel ? '・' + esc(r.vehicleLabel) : '') + '</div></div>' +
       '<div><div class="st">' + st('予約', r.status) + st('支払い', r.payment_status) + st('返金', r.refund_status) +
       (r.checked_in ? '<span class="chip ok">受付済</span>' : '') + '</div><div class="meta num">' + esc(r.eventLabel) + '・' + yen(r.amount) + '</div></div>' +
       '<div class="meta">' + esc(r.email) + '<br>' + (tel ? '<a href="tel:' + esc(tel) + '">' + esc(r.phone) + '</a>' : esc(r.phone)) + '</div>' +
@@ -1053,7 +1054,10 @@ var UI = {
   /** 到着の予定ごとの組・人数（例: 12時台 2組4名・13時台 1組2名） */
   function arrivalsHtml(e) {
     if (!e.arrivals || !e.arrivals.length) return '';
-    return '<div class="meta">到着の予定: ' + e.arrivals.map(function (a) { return esc(a.label) + ' <b>' + a.groups + '組' + a.people + '名</b>'; }).join('・') + '</div>';
+    var p = e.parking || {};
+    return '<div class="meta">到着の予定: ' + e.arrivals.map(function (a) { return esc(a.label) + ' <b>' + a.groups + '組' + a.people + '名</b>'; }).join('・') + '</div>' +
+      // 駐車の合計（2026-10-28）。車両を聞いていない古い予約があれば、その組数も
+      '<div class="meta">駐車: 車 <b>' + (p.cars || 0) + '台</b>・バイク <b>' + (p.bikes || 0) + '台</b>' + (p.unknown ? '（ほかに台数未確認 ' + p.unknown + '組）' : '') + '</div>';
   }
   function bindResend(root) {
     each(root, 'data-resend', function (id, b) {
@@ -1140,7 +1144,7 @@ var UI = {
             lastArr = r.arrival;
             return head + '<div class="ci' + (r.checked_in ? ' done' : '') + '" data-name="' + esc(searchKey(r)) + '">' +
               '<div><div class="big">' + esc(r.name) + '　<span class="num">' + esc(r.party_size) + '名</span></div>' +
-              (r.kana ? '<div class="meta">' + esc(r.kana) + '</div>' : '') +
+              (r.kana || r.vehicleLabel ? '<div class="meta">' + esc(r.kana || '') + (r.kana && r.vehicleLabel ? '・' : '') + esc(r.vehicleLabel || '') + '</div>' : '') +
               '<div><span class="chip ' + (r.checked_in ? 'ok">受付済' : 'wait">未受付') + '</span>' + (r.status === 'CANCEL_REQUESTED' ? ' <span class="chip wait">キャンセル申請中</span>' : '') + '</div>' +
               '<div class="meta num">' + esc(r.number) + '・' + (tel ? '<a href="tel:' + esc(tel) + '">' + esc(r.phone) + '</a>' : esc(r.phone)) + '</div></div>' +
               (r.checked_in ? '<button type="button" class="btn ghost small" data-undo="' + esc(r.id) + '" aria-label="' + esc(r.name) + ' 様の受付を取り消す">取り消す</button>'
