@@ -142,6 +142,7 @@ ul.list li { margin: 4px 0; }
 .steps { display: flex; margin: 20px 0 0; padding: 0; list-style: none; gap: 6px; }
 .steps li { flex: 1; font-size: 12px; color: var(--mute); padding-top: 8px; border-top: 2px solid var(--hair); }
 .steps li.done { border-top-color: var(--river); color: var(--river); }
+.steps li.done::before { content: "✓ "; } /* 済は色だけでなく印でも */
 .steps li.now { border-top-color: var(--ink); color: var(--ink); font-weight: 700; }
 
 /* 入力 */
@@ -237,9 +238,11 @@ var UI = {
   guideHtml: function (g, opt) {
     opt = opt || {};
     var e = UI.esc;
+    // noPlace: 場所・アクセスを出さない（予約ページは写真の下に同じ物があるため・2026-10-28）。受付の目印だけ残す
     return '<section class="guide"><h3>' + (opt.title || '当日のご案内') + '</h3>' +
-      '<dl class="kv"><dt>場所</dt><dd>' + e(g.venue) + '<div style="margin-top:8px">' + UI.mapLink(g) + '</div></dd>' +
-      '<dt>アクセス</dt><dd>' + g.access.map(e).join('<br>') + '</dd>' +
+      '<dl class="kv">' + (opt.noPlace ? '<dt>受付</dt><dd>' + e(g.access[2] || '') + '</dd>'
+        : '<dt>場所</dt><dd>' + e(g.venue) + '<div style="margin-top:8px">' + UI.mapLink(g) + '</div></dd>' +
+          '<dt>アクセス</dt><dd>' + g.access.map(e).join('<br>') + '</dd>') +
       '<dt>持ち物</dt><dd>' + g.bring.map(e).join('・') + '<div class="muted" style="margin-top:4px">' + g.notes.map(e).join('／') + '</div></dd></dl>' +
       '</section>';
   },
@@ -262,7 +265,7 @@ var UI = {
       (v.emailMasked ? '<dt>メール</dt><dd>' + e(v.emailMasked) + '</dd>' : '') + '</dl>';
     if (v.upcoming && g) {
       html += '<div class="row-btns">' +
-        '<a class="btn ink small" target="_blank" rel="noopener" href="' + e(UI.calendarUrl({
+        '<a class="btn ghost small" target="_blank" rel="noopener" href="' + e(UI.calendarUrl({
           date: v.date, start: v.start, end: v.end, title: 'テントサウナ Ten.Ten（' + v.number + '）', location: g.venue,
           details: '予約番号 ' + v.number + '\n持ち物: ' + g.bring.join('・') + '\n地図: ' + g.mapUrl })) + '">Google カレンダーに追加</a></div>';
       // 地図は下の「当日のご案内」の場所の行にある（同じボタンを2つ出さない）
@@ -366,7 +369,7 @@ var UI = {
       <tr><th>電話番号</th><td>請求があった場合、遅滞なく開示します。</td></tr>
       <tr><th>メールアドレス</th><td>tenten.yoyaku@gmail.com</td></tr>
       <tr><th>お問い合わせ</th><td>Instagram（@sauna_tenten_osaka）の DM、または上記メールアドレス</td></tr>
-      <tr><th>サービスの内容</th><td>テントサウナの利用（ご予約いただいた開催回の時間内のフリータイム）。30分などのご利用は、当日現地で受け付けます。</td></tr>
+      <tr><th>サービスの内容</th><td>テントサウナの利用（ご予約いただいた開催回の時間内のフリータイム。時間内は出入り自由です）。30分などのご利用は、キャンプ場をご利用の方だけ、当日現地で受け付けます。</td></tr>
       <tr><th>販売価格</th><td>開催回ごとに予約ページに表示する1人あたりの料金（税込）× 人数。<br>表示の料金には入場料 1,000円が含まれます（例：フリータイム 3,000円＋入場料 1,000円＝1人 4,000円）。</td></tr>
       <tr><th>料金以外にかかる費用</th><td>会場までの交通費、タオル・水着などの持ち物はお客様のご負担です。</td></tr>
       <tr><th>お支払い方法</th><td>クレジットカード（Apple Pay・Google Pay・Link を含む）、PayPay（決済代行：Stripe）</td></tr>
@@ -394,7 +397,7 @@ var UI = {
     <ol>
       <li>料金は、開催回ごとに予約ページに表示する1人あたりの料金（税込）に人数をかけた金額です。お申し込み時にお支払いいただきます（前払い）。</li>
       <li>表示の料金には、入場料 1,000円が含まれます。</li>
-      <li>予約ページで受け付けるのはフリータイムのご利用です。30分などのご利用は、当日現地で受け付けます。</li>
+      <li>予約ページで受け付けるのはフリータイムのご利用です（開催回の時間内は出入り自由）。30分などのご利用は、キャンプ場をご利用の方だけ、当日現地で受け付けます。</li>
     </ol>
 
     <h3>第3条 ご参加の条件</h3>
