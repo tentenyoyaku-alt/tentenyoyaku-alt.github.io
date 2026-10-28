@@ -7,6 +7,14 @@
 <style id="noframe">html{display:none}</style>
 <script>if (window.top === window.self) { var nf = document.getElementById('noframe'); nf.parentNode.removeChild(nf); } else { try { window.top.location = window.self.location.href; } catch (e) {} }</script>
 <title>Ten.Ten ｜大阪・能勢のテントサウナ ご予約</title>
+<meta name="description" content="大阪・能勢の川沿いのテントサウナ。水風呂は目の前の川。開催日を選んで、ネットで予約・お支払いができます。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Ten.Ten ｜大阪・能勢のテントサウナ">
+<meta property="og:title" content="Ten.Ten ｜大阪・能勢のテントサウナ ご予約">
+<meta property="og:description" content="大阪・能勢の川沿いのテントサウナ。水風呂は目の前の川。開催日を選んで、ネットで予約・お支払いができます。">
+<meta property="og:url" content="https://tentenyoyaku-alt.github.io/done.html">
+<meta property="og:image" content="https://tentenyoyaku-alt.github.io/ogp.jpg">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="referrer" content="no-referrer">
 <script>
 /* build_site.js が差し込む部品: google.script.run の代わりに Apps Script の窓口へ問い合わせる */
@@ -292,8 +300,13 @@ var UI = {
     var head = UI.$('siteHeaderLink');
     if (head && cfg.webAppUrl) head.href = cfg.webAppUrl;
     if (head && cfg.shopName) head.setAttribute('aria-label', cfg.shopName + '（予約ページのはじめへ）');
+    // 帯の文はテスト環境のときだけここで入れる（ページに文を置いておくと、LINE などのリンクのプレビューに
+    // 「テスト環境です」と出てしまうため・2026-10-28）
     var tb = UI.$('testBanner');
-    if (tb) tb.classList.toggle('hidden', cfg.env !== 'test');
+    if (tb) {
+      tb.textContent = cfg.env === 'test' ? 'テスト環境です。実際の予約・決済にはなりません。' : '';
+      tb.classList.toggle('hidden', cfg.env !== 'test');
+    }
     var foot = UI.$('siteFooter');
     if (foot) {
       var links = [];
@@ -322,7 +335,7 @@ var UI = {
 </head>
 <body>
 <header class="site-header"><div class="in"><a id="siteHeaderLink" href="#"><span class="logo" aria-hidden="true"></span><span class="name">Ten.Ten<small>大阪・能勢のテントサウナ</small></span></a></div></header>
-<div id="testBanner" class="test-banner hidden">テスト環境です。実際の予約・決済にはなりません。</div>
+<div id="testBanner" class="test-banner hidden"></div>
 <div class="wrap">
   <ol class="steps hidden" id="steps" aria-label="ご予約の流れ">
     <li class="done">日にち</li><li class="done">お客様情報</li><li class="done">お支払い</li><li class="now" aria-current="step">完了</li>
