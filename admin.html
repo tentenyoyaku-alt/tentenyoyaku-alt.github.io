@@ -229,15 +229,18 @@ var UI = {
     }
     return cells;
   },
-  /** 当日のご案内（場所・アクセス・持ち物）。罫線の表 */
+  /** 地図のボタン（どの画面も同じ言葉「Google マップで見る」・2026-10-28 ユーザーの声） */
+  mapLink: function (g, cls) {
+    return '<a class="btn ghost small ' + (cls || '') + '" href="' + UI.esc(g.mapUrl) + '" target="_blank" rel="noopener">Google マップで見る</a>';
+  },
+  /** 当日のご案内（場所・アクセス・持ち物）。罫線の表。地図は「場所」のすぐ下（2026-10-28 ユーザーの声「場所の近くに」） */
   guideHtml: function (g, opt) {
     opt = opt || {};
     var e = UI.esc;
     return '<section class="guide"><h3>' + (opt.title || '当日のご案内') + '</h3>' +
-      '<dl class="kv"><dt>場所</dt><dd>' + e(g.venue) + '</dd>' +
+      '<dl class="kv"><dt>場所</dt><dd>' + e(g.venue) + '<div style="margin-top:8px">' + UI.mapLink(g) + '</div></dd>' +
       '<dt>アクセス</dt><dd>' + g.access.map(e).join('<br>') + '</dd>' +
       '<dt>持ち物</dt><dd>' + g.bring.map(e).join('・') + '<div class="muted" style="margin-top:4px">' + g.notes.map(e).join('／') + '</div></dd></dl>' +
-      '<a class="btn ghost small block" href="' + e(g.mapUrl) + '" target="_blank" rel="noopener">Google マップで開く</a>' +
       '</section>';
   },
   /** 予約1件の内容（予約確認ページ・メールでの確認ページで共通）。v は Access.view の形 */
@@ -262,7 +265,7 @@ var UI = {
         '<a class="btn ink small" target="_blank" rel="noopener" href="' + e(UI.calendarUrl({
           date: v.date, start: v.start, end: v.end, title: 'テントサウナ Ten.Ten（' + v.number + '）', location: g.venue,
           details: '予約番号 ' + v.number + '\n持ち物: ' + g.bring.join('・') + '\n地図: ' + g.mapUrl })) + '">Google カレンダーに追加</a>' +
-        '<a class="btn ghost small" href="' + e(g.mapUrl) + '" target="_blank" rel="noopener">地図を開く</a></div>';
+        UI.mapLink(g) + '</div>';
     }
     return html;
   },
@@ -1294,6 +1297,7 @@ var UI = {
   function adminsTab() {
     admin('api_adminListAdmins').then(function (res) {
       if (!res.ok) { $('main').innerHTML = notice(res); return; }
+      var testEnv = !!(S.dash && S.dash.env !== 'prod');
       $('main').innerHTML = '<h1>管理者</h1><div class="notice info"><b>主管理者</b>: すべての操作（開催回の作成・公開・中止、返金、管理者の変更を含む）。<br><b>一般管理者</b>: 予約の確認・受付・キャンセル申請の処理・確認メールの再送。</div><div id="adMsg"></div>' +
         res.data.map(function (a) {
           var me = a.email === S.me.email;
@@ -1304,8 +1308,22 @@ var UI = {
         '<h2>管理者を追加</h2><div class="field"><label for="adEmail">メールアドレス<span class="req">必須</span></label><input id="adEmail" type="email" autocomplete="off"></div>' +
         '<div class="field"><label for="adRole">権限</label><select id="adRole"><option value="STAFF">一般管理者（予約・受付・申請の処理）</option><option value="MASTER">主管理者（返金・中止・管理者の変更も）</option></select></div>' +
         '<button type="button" class="btn" id="adAdd">追加</button>' +
+        // 知らせのテストはテスト環境だけ（ユーザー決定 2026-10-28「本番には必要ない」・サーバーも本番では断る）
+        (testEnv ? '<h2>知らせのテスト</h2><p class="meta">新しい予約・キャンセル申請などの知らせは、主管理者全員と知らせ先のアドレスに届き、一般管理者には CC で届きます。下のボタンで、見本の知らせを1通送って届くか確かめられます（1時間に3回まで・実際の予約にはなりません）。</p>' +
+          '<button type="button" class="btn ghost" id="adTest">知らせのテストを送る</button><div id="adTestMsg"></div>' : '') +
         '<h2>操作の記録 <span class="muted">新しい順・100件</span></h2><div id="audit" class="scroll"></div>';
       var after = function (r, text) { if (r.ok) { toast(text); adminsTab(); } else $('adMsg').innerHTML = notice(r); };
+      if (testEnv) $('adTest').onclick = function () {
+        busy($('adTest'), '送っています…');
+        admin('api_adminSendTestNotice').then(function (r) {
+          unbusy($('adTest'));
+          if (!r.ok) { $('adTestMsg').innerHTML = notice(r); return; }
+          var d = r.data;
+          $('adTestMsg').innerHTML = '<div class="notice ' + (d.status === 'SENT' ? 'ok' : 'err') + '">' +
+            (d.status === 'SENT' ? '送りました。受信箱を確かめてください（迷惑メールに入ることもあります）。' : '送れませんでした（' + esc(d.status) + '）。「要対応」を確かめてください。') +
+            '<br>宛先: ' + esc(d.to.join('、')) + (d.cc.length ? '<br>CC: ' + esc(d.cc.join('、')) : '') + '</div>';
+        });
+      };
       $('adAdd').onclick = function () { busy($('adAdd')); admin('api_adminAddAdmin', $('adEmail').value, $('adRole').value).then(function (r) { unbusy($('adAdd')); after(r, '追加しました'); }); };
       each($('main'), 'data-role', function (email, b) {
         if (confirm(email + ' の権限を「' + (b.getAttribute('data-to') === 'MASTER' ? '主管理者' : '一般管理者') + '」に変更しますか？（その人は、ログインし直しになります）'))
