@@ -219,16 +219,26 @@ var UI = {
       '&location=' + encodeURIComponent(o.location || '') +
       '&details=' + encodeURIComponent(o.details || '');
   },
-  /** 月のカレンダーのマス（日曜はじまり）。前の空きは date:null。m は 1〜12 */
-  monthCells: function (y, m) {
+  /**
+   * 月のカレンダーのマス。前の空きは date:null。m は 1〜12・dow は本当の曜日（0=日〜6=土）。
+   * weekStart: 週の始まりの曜日（0=日曜はじまり＝管理画面・1=月曜はじまり＝予約ページ・2026-10-30 ユーザー指定）。
+   * 月初の前の空きは「月初の曜日 − 週の始まり」（7 で割った余り）。月の日数（うるう年も）は Date に任せる
+   */
+  monthCells: function (y, m, weekStart) {
+    var ws = weekStart || 0;
     var first = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
     var days = new Date(Date.UTC(y, m, 0)).getUTCDate();
     var cells = [];
-    for (var i = 0; i < first; i++) cells.push({ date: null });
+    for (var i = 0; i < (first - ws + 7) % 7; i++) cells.push({ date: null });
     for (var d = 1; d <= days; d++) {
       cells.push({ date: y + '-' + (m < 10 ? '0' : '') + m + '-' + (d < 10 ? '0' : '') + d, day: d, dow: (first + d - 1) % 7 });
     }
     return cells;
+  },
+  /** 曜日の見出し（weekStart と同じ並び）。'日月火水木金土' を回す */
+  weekdays: function (weekStart) {
+    var w = '日月火水木金土', ws = weekStart || 0;
+    return (w.slice(ws) + w.slice(0, ws)).split('');
   },
   /** 地図のボタン（どの画面も同じ言葉「Google マップで見る」・2026-10-28 ユーザーの声） */
   mapLink: function (g, cls) {
