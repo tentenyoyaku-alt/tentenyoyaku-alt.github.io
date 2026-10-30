@@ -19,7 +19,7 @@
 <script>
 (function () {
   var p = new URLSearchParams(location.search).get('page');
-  var map = { done: 'done.html', r: 'r.html', my: 'my.html', legal: 'legal.html', admin: 'admin.html' };
+  var map = { done: 'done.html', r: 'r.html', my: 'my.html', legal: 'legal.html', admin: 'admin.html', guide: 'guide.html' };
   if (p && Object.prototype.hasOwnProperty.call(map, p)) location.replace(map[p] + location.search + location.hash);
 })();
 </script>
@@ -238,16 +238,26 @@ var UI = {
       '&location=' + encodeURIComponent(o.location || '') +
       '&details=' + encodeURIComponent(o.details || '');
   },
-  /** 月のカレンダーのマス（日曜はじまり）。前の空きは date:null。m は 1〜12 */
-  monthCells: function (y, m) {
+  /**
+   * 月のカレンダーのマス。前の空きは date:null。m は 1〜12・dow は本当の曜日（0=日〜6=土）。
+   * weekStart: 週の始まりの曜日（0=日曜はじまり＝管理画面・1=月曜はじまり＝予約ページ・2026-10-30 ユーザー指定）。
+   * 月初の前の空きは「月初の曜日 − 週の始まり」（7 で割った余り）。月の日数（うるう年も）は Date に任せる
+   */
+  monthCells: function (y, m, weekStart) {
+    var ws = weekStart || 0;
     var first = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
     var days = new Date(Date.UTC(y, m, 0)).getUTCDate();
     var cells = [];
-    for (var i = 0; i < first; i++) cells.push({ date: null });
+    for (var i = 0; i < (first - ws + 7) % 7; i++) cells.push({ date: null });
     for (var d = 1; d <= days; d++) {
       cells.push({ date: y + '-' + (m < 10 ? '0' : '') + m + '-' + (d < 10 ? '0' : '') + d, day: d, dow: (first + d - 1) % 7 });
     }
     return cells;
+  },
+  /** 曜日の見出し（weekStart と同じ並び）。'日月火水木金土' を回す */
+  weekdays: function (weekStart) {
+    var w = '日月火水木金土', ws = weekStart || 0;
+    return (w.slice(ws) + w.slice(0, ws)).split('');
   },
   /** 地図のボタン（どの画面も同じ言葉「Google マップで見る」・2026-10-28 ユーザーの声） */
   mapLink: function (g, cls) {
@@ -360,34 +370,25 @@ var IMG = {
 <style>
   /* 予約画面だけの見た目（共通は assets/web/theme.css） */
   .hero { margin: 0; padding: 0; }
-  .hero img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; background: #DDE3E1; }
-  .hero-text { padding: 28px 20px 8px; }
+  /* スマホは写真を少し低く（16:10）して、カレンダーまでを近く（2026-10-30） */
+  .hero img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: #DDE3E1; }
+  .hero-text { padding: 22px 20px 4px; }
   .eyebrow { font-size: 12.5px; letter-spacing: .12em; color: var(--mute); margin: 0 0 10px; }
   .hero h1 { font-size: 34px; line-height: 1.3; margin: 0 0 14px; }
   .lead { font-size: 15.5px; color: var(--ink-2); margin: 0 0 22px; max-width: 30em; }
   .hero-act { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
   .hero-act .btn { flex: 1 1 auto; max-width: 240px; min-height: 56px; font-size: 17px; }
   .hero-links { flex: none; display: flex; flex-direction: column; gap: 6px; font-size: 14.5px; }
-  /* 予約へ進むボタン（#pick・1つだけ） */
-  .pick { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-  .pick .p { font-size: 13px; color: var(--ink-2); line-height: 1.45; min-width: 0; }
+  /* 1日に回が2つ以上ある日だけ出す「時間を選ぶ」（ふだんは日付を押すと入力へ直接・2026-10-30） */
+  .pick { background: var(--white); border: 1px solid var(--hair); border-radius: var(--r-l); padding: 14px 16px; margin-top: -8px; }
+  .pick .p { font-size: 13px; color: var(--ink-2); line-height: 1.45; margin-bottom: 8px; }
   .pick .p b { font-family: var(--serif); font-size: 17px; color: var(--ink); }
-  .pick .btn { min-height: 48px; min-width: 150px; flex: none; }
-  .pick-rows { display: grid; gap: 8px; width: 100%; }
-  .pick-rows .pick-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-  @media (max-width: 719px) {
-    .pick { position: fixed; left: 0; right: 0; bottom: 0; z-index: 8; background: rgba(246,243,236,.97); border-top: 1px solid var(--ink); padding: 10px 20px calc(10px + env(safe-area-inset-bottom)); }
-    .pick.off { display: none; }
-    .pick .btn { min-width: 136px; }
-    #listView ~ .site-footer { padding-bottom: 120px; }
-  }
-  @media (min-width: 720px) {
-    .pick { background: var(--white); border: 1px solid var(--hair); border-radius: var(--r-l); padding: 16px 20px; margin-top: -8px; }
-    .pick .to-cal { display: none; } /* 広い画面ではカレンダーがすぐ上にある */
-  }
-  .pick.flash { animation: pickFlash .6s ease-out; }
-  @keyframes pickFlash { from { background: #E3ECEE; } }
-  @media (prefers-reduced-motion: reduce) { .pick.flash { animation: none; } }
+  .pick .slots { display: grid; gap: 8px; }
+  .pick .slots .btn { min-height: 48px; }
+  /* はじめての方へ（別ページ）への控えめな案内 */
+  .to-guide { margin: 8px 0 40px; padding-top: 20px; border-top: 1px solid var(--hair); }
+  .to-guide a { display: flex; flex-direction: column; gap: 2px; font-size: 15px; padding: 6px 0; }
+  .to-guide a span { font-size: 12.5px; color: var(--mute); }
   /* 場所の概要 */
   .facts { display: grid; grid-template-columns: 1fr 1fr; margin: 28px 20px 0; border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); }
   .facts > div { font-size: 13.5px; line-height: 1.5; padding: 12px 10px; color: var(--ink-2); }
@@ -417,25 +418,27 @@ var IMG = {
   .cal-grid > * { border-right: 1px solid var(--hair); border-bottom: 1px solid var(--hair); }
   .cal-w { font-size: 11.5px; color: var(--mute); text-align: center; padding: 6px 0; background: var(--white); }
   .cal-w.sun { color: var(--sun); } .cal-w.sat { color: var(--sat); }
-  .cal-d { min-height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 15px; color: var(--mute); line-height: 1.2; background: var(--white); }
-  .cal-d.past { color: #A9A298; }
-  .cal-d .n { font-family: var(--serif); font-weight: 500; font-size: 17px; }
+  /*
+   * マス: 予約できる日は色つき・太い数字のボタン。それ以外（開催なし・受付終了・満席・過去）は日付だけを薄く出し、押せない。
+   * 「満席」などの文字は出さない（2026-10-30 ユーザー指定「日にちは出して薄く・予約できる日と出来ない日をパッと見れる」）
+   */
+  .cal-d { min-height: 56px; background: var(--white); }
+  .cal-d.off { display: flex; align-items: center; justify-content: center; color: #CFC8BC; }
+  .cal-d.off .n { font-family: var(--serif); font-size: 15px; font-weight: 500; line-height: 1; }
+  button.cal-d { appearance: none; border: 0; border-right: 1px solid var(--hair); border-bottom: 1px solid var(--hair); font: inherit; cursor: pointer; padding: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--ink); background: #E3ECEE; -webkit-tap-highlight-color: transparent; }
+  button.cal-d:hover { background: #D6E3E6; }
+  button.cal-d:active { background: var(--ink); color: #fff; }
+  button.cal-d .n { font-family: var(--serif); font-weight: 700; font-size: 19px; line-height: 1; }
+  button.cal-d .m { font-size: 11.5px; font-weight: 700; color: var(--river); letter-spacing: .02em; }
   .cal-d.today .n { text-decoration: underline; text-underline-offset: 3px; }
-  .cal-d .m { font-size: 12px; font-weight: 700; margin-top: 2px; }
-  button.cal-d { appearance: none; border: 0; border-right: 1px solid var(--hair); border-bottom: 1px solid var(--hair); font: inherit; cursor: pointer; padding: 0; position: relative; }
-  /* 予約できる日は淡い青・満席は灰＋打ち消し線・選んだ日は墨 */
-  .cal-d.open { color: var(--ink); background: #E3ECEE; }
-  .cal-d.open:hover { background: #D6E3E6; }
-  .cal-d.open .n { font-weight: 700; }
-  .cal-d.open .m { color: var(--river); }
-  .cal-d.open.sun .n { color: var(--sun); } .cal-d.open.sat .n { color: var(--sat); }
-  .cal-d.full { background: #EFEBE3; color: var(--mute); }
-  .cal-d.full .n { text-decoration: line-through; font-weight: 500; }
-  .cal-d.sel { background: var(--ink); color: #fff; outline: 2px solid var(--ink); outline-offset: -2px; }
-  .cal-d.sel .n, .cal-d.sel .m { color: #fff !important; }
-  .cal-legend { display: flex; gap: 6px 16px; flex-wrap: wrap; font-size: 12px; color: var(--mute); margin-top: 10px; }
   .cal-legend b { color: var(--river); font-weight: 700; }
   .cal-more { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 10px; font-size: 14px; }
+  button.cal-d.sun .n { color: var(--sun); } button.cal-d.sat .n { color: var(--sat); }
+  button.cal-d.sel { background: var(--ink); }
+  button.cal-d.sel .n, button.cal-d.sel .m { color: #fff; }
+  .cal-legend { font-size: 12.5px; color: var(--mute); margin-top: 10px; }
+  .cal-none { padding: 18px 4px; font-size: 14px; color: var(--ink-2); }
   /* お越しの車両 */
   .veh { display: flex; flex-wrap: wrap; gap: 10px 20px; }
   .veh-row { display: flex; align-items: center; gap: 10px; }
@@ -448,27 +451,6 @@ var IMG = {
   .chosen .price { font-size: 14px; margin-top: 2px; white-space: nowrap; }
   .chosen .price b { font-family: var(--serif); font-size: 18px; }
 
-  /* はじめての方へ（docs/20 K2） */
-  .features { display: grid; gap: 20px; margin-top: 4px; }
-  .feature img { aspect-ratio: 4 / 3; object-fit: cover; border-radius: var(--r-l); margin-bottom: 10px; }
-  .feature:first-child img { aspect-ratio: 1 / 1; } /* 外観_077 は縦の動画から正方形に切り出し */
-  .feature h3 { font-family: var(--serif); font-size: 17px; font-weight: 700; margin: 0 0 4px; }
-  .feature:first-child h3 { font-size: 17px; }
-  .feature p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
-  @media (max-width: 559px) {
-    .feature + .feature { display: grid; grid-template-columns: 30% minmax(0, 1fr); gap: 14px; align-items: center; }
-    .feature + .feature img { margin: 0; aspect-ratio: 1 / 1; }
-    .feature + .feature h3 { font-size: 16px; }
-  }
-  @media (min-width: 560px) {
-    .features { grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
-    .feature:first-child { grid-column: 1 / -1; display: grid; grid-template-columns: 42% minmax(0, 1fr); gap: 24px; align-items: center; }
-    .feature:first-child img { margin: 0; }
-    .feature:first-child h3 { font-size: 20px; }
-    .feature:first-child p { font-size: 15px; }
-  }
-  .guide { margin-top: 32px; }
-  .rules { margin-top: 24px; }
 
   /* 入力 */
   .chosen { background: var(--white); border: 1px solid var(--hair); border-radius: var(--r-l); padding: 14px 18px 12px; margin: 20px 0 8px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; align-items: start; }
@@ -511,7 +493,7 @@ var IMG = {
       <p class="eyebrow">川沿いのテントサウナ</p>
       <h1>水風呂は、<br>目の前の川。</h1>
       <p class="lead">薪ストーブで温まったら、そのまま川へ。能勢の空の下で、ゆっくり外気浴。</p>
-      <div class="hero-act"><span class="hero-links"><a href="#first" id="toFirst">はじめての方へ</a><a href="#lookup" id="toLookup">予約の確認</a></span><a class="btn" href="#dates" id="toDates">日にちを選ぶ</a></div>
+      <div class="hero-act"><span class="hero-links"><a href="?page=guide" id="toFirst" target="_top">はじめての方へ</a><a href="#lookup" id="toLookup">予約の確認</a></span><a class="btn" href="#dates" id="toDates">日にちを選ぶ</a></div>
     </div>
   </figure>
   <div class="facts" id="facts"></div>
@@ -524,21 +506,12 @@ var IMG = {
       <p class="muted" id="datesIntro">予約できるのはフリータイム（開催時間の中は出入り自由）です。料金は1人あたり・税込・入場料込み。</p>
       <div id="cal" class="cal hidden" aria-label="開催日のカレンダー"></div>
       <div id="events" aria-live="polite"></div>
+      <!-- 1日に回が2つ以上ある日だけ、時間を選ぶ（ふだんは日付を押すと入力へ直接進む・2026-10-30） -->
       <div id="pick" class="pick hidden" aria-live="polite"></div>
     </section>
 
-    <section class="section">
-      <h2 id="first">はじめての方へ</h2>
-      <div class="features" id="features"></div>
-      <div id="guide"></div>
-      <div class="rules">
-        <h3>ご利用の条件</h3>
-        <ul class="list" id="rules"></ul>
-        <p class="muted">くわしくは<a id="termsLink" href="#" target="_blank" rel="noopener">ご利用規約</a>をご覧ください。</p>
-      </div>
-    </section>
-
-    <section class="section">
+    <!-- 「はじめての方へ」は別のページ（?page=guide）へ移した。ここは予約の確認と、控えめな案内だけ（2026-10-30 ユーザー依頼） -->
+    <section class="section lookup">
       <h2 id="lookup">ご予約の確認・キャンセル</h2>
       <p class="muted">予約したときのメールアドレスに、予約の確認・キャンセル申請ができるページのリンク（30分間有効）を送ります。</p>
       <div class="field">
@@ -548,6 +521,7 @@ var IMG = {
       <button type="button" class="btn ghost block" id="myBtn">確認用のリンクを送る</button>
       <div id="myMsg" role="status"></div>
     </section>
+    <p class="to-guide"><a href="?page=guide" id="guideLink" target="_top">はじめての方へ<span>使い方・料金・持ち物・よくある質問</span></a></p>
   </div>
 </section>
 
@@ -687,7 +661,6 @@ var IMG = {
   function show(id, push) {
     ['listView', 'formView', 'payView'].forEach(function (v) { $(v).classList.toggle('hidden', v !== id); });
     window.scrollTo(0, 0);
-    updatePickBar();
     if (push) try { history.pushState({ v: id }, ''); } catch (e) { /* 枠の中などで使えないときは積まない */ }
   }
   function toList() { show('listView'); renderResume(); setTimeout(function () { scrollToEl($('dates')); }, 0); }
@@ -699,18 +672,7 @@ var IMG = {
   });
   /** 画面の「戻る」も、履歴があればスマホの「戻る」と同じ動き（履歴を残さない） */
   function back(from, fallback) { if (history.state && history.state.v === from) history.back(); else fallback(); }
-  /** 下の帯: 写真の下のボタンが見えている間（写真の読み込みで位置が動いても IntersectionObserver で追う）と「ご予約の確認」が見えている間は隠す */
-  var heroSeen = true;
-  function updatePickBar() {
-    var lk = $('lookup').getBoundingClientRect();
-    $('pick').classList.toggle('off', heroSeen || lk.top < innerHeight - 80);
-  }
-  if (window.IntersectionObserver) {
-    new IntersectionObserver(function (es) { heroSeen = es[0].isIntersecting; updatePickBar(); }, { threshold: 0.9 }).observe($('toDates'));
-  } else {
-    window.addEventListener('scroll', function () { var b = $('toDates').getBoundingClientRect(); heroSeen = b.top >= 0 && b.bottom <= innerHeight; updatePickBar(); }, { passive: true });
-  }
-  window.addEventListener('scroll', updatePickBar, { passive: true });
+  // 下の帯（次の開催・この日で予約する）は無くした。予約へ進む道はカレンダーの日付だけ（2026-10-30 ユーザー依頼）
   function scrollToEl(el) { if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 
   /* ---------- 入力の一時保存（このタブの中だけ。タブを閉じると消える） ---------- */
@@ -725,100 +687,94 @@ var IMG = {
     clear: function () { try { sessionStorage.removeItem(SAVE_KEY); } catch (e) {} }
   };
 
-  /* ---------- 開催日のカレンダー（画面だけ。データは開催日の一覧と同じ） ---------- */
-  function dow(date) { var p = date.split('-'); return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2])).getDay(); }
+  /*
+   * ---------- 開催日のカレンダー（2026-10-30 ユーザー指定） ----------
+   * ・月曜はじまり（マスの計算そのものを月曜基準に: UI.monthCells(年, 月, 1)）
+   * ・予約できる日（サーバーが返す受付中の回のうち満席でない日）だけ色つきのボタン。それ以外の日は日付を薄く出すだけで押せない（文字は出さない）
+   * ・日付を押すと、その日の入力画面へ直接進む（1日に回が2つ以上ある日だけ、下で時間を選ぶ）
+   * ・予約できるかの最終の判定は、これまでどおりサーバー（Booking.start）が申し込みのときに行う。この画面は表示だけ
+   */
+  var WEEK_START = 1;
   var cal = { y: 0, m: 0, sel: '' };
   function ym(date) { var p = date.split('-'); return { y: Number(p[0]), m: Number(p[1]) }; }
   function ymNum(o) { return o.y * 12 + o.m; }
+  /** 予約できる回（日付ごと）。満席の回・今日より前の回は入れない */
+  function openByDate() {
+    var today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' }), by = {};
+    events.forEach(function (e, i) { if (!e.full && e.date >= today) (by[e.date] = by[e.date] || []).push({ e: e, i: i }); });
+    return by;
+  }
   function renderCalendar() {
-    if (!events.length) { $('cal').classList.add('hidden'); return; }
-    $('cal').classList.remove('hidden'); // 前に見た内容（開催なし）のあとで最新が届いたときにも出す
+    var by = openByDate(), dates = Object.keys(by).sort();
+    if (!dates.length) { $('cal').classList.add('hidden'); return; }
     var today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
-    var min = ym(today), max = ym(events[events.length - 1].date);
-    if (!cal.y) { var f = ym((events.filter(function (e) { return !e.full; })[0] || events[0]).date); cal.y = f.y; cal.m = f.m; } // 最初は、予約できる日がある最初の月
-    var byDate = {};
-    events.forEach(function (e) { (byDate[e.date] = byDate[e.date] || []).push(e); });
-    var html = '<div class="cal-head"><button type="button" class="cal-nav" id="calPrev" aria-label="前の月"' + (ymNum(cal) <= ymNum(min) ? ' disabled' : '') + '>‹</button>' +
+    // 月の切り替え: 今月〜予約できる日がある最後の月（予約できる日がない月も見られる＝前の版と同じ）。最初は予約できる日がある最初の月
+    var min = ymNum(ym(today)), max = ymNum(ym(dates[dates.length - 1]));
+    if (!cal.y || ymNum(cal) < min || ymNum(cal) > max) { var f = ym(dates[0]); cal.y = f.y; cal.m = f.m; }
+    var cur = ymNum(cal);
+    var html = '<div class="cal-head"><button type="button" class="cal-nav" id="calPrev" aria-label="前の月"' + (cur <= min ? ' disabled' : '') + '>‹</button>' +
       '<b aria-live="polite">' + cal.y + '年' + cal.m + '月</b>' +
-      '<button type="button" class="cal-nav" id="calNext" aria-label="次の月"' + (ymNum(cal) >= ymNum(max) ? ' disabled' : '') + '>›</button></div>' +
-      '<div class="cal-grid">' + WD.split('').map(function (w, i) { return '<div class="cal-w' + (i === 0 ? ' sun' : i === 6 ? ' sat' : '') + '">' + w + '</div>'; }).join('');
-    UI.monthCells(cal.y, cal.m).forEach(function (c) {
-      if (!c.date) { html += '<div class="cal-d"></div>'; return; }
-      var list = byDate[c.date], cls = 'cal-d' + (c.dow === 0 ? ' sun' : c.dow === 6 ? ' sat' : '') + (c.date === today ? ' today' : '') + (c.date < today ? ' past' : '');
-      if (!list) { html += '<div class="' + cls + '"><span class="n">' + c.day + '</span></div>'; return; }
-      var open = list.some(function (e) { return !e.full; });
-      var label = cal.m + '月' + c.day + '日(' + WD.charAt(c.dow) + ') ' + (open ? '予約できます' : '満席');
-      html += '<button type="button" class="' + cls + (open ? ' open' : ' full') + (cal.sel === c.date ? ' sel' : '') + '" data-date="' + c.date + '" aria-label="' + esc(label) + '"' +
-        ' aria-pressed="' + (cal.sel === c.date) + '"><span class="n">' + c.day + '</span><span class="m">' + (open ? '予約可' : '満席') + '</span></button>';
+      '<button type="button" class="cal-nav" id="calNext" aria-label="次の月"' + (cur >= max ? ' disabled' : '') + '>›</button></div>' +
+      '<div class="cal-grid">' + UI.weekdays(WEEK_START).map(function (w) { return '<div class="cal-w' + (w === '日' ? ' sun' : w === '土' ? ' sat' : '') + '">' + w + '</div>'; }).join('');
+    var cells = UI.monthCells(cal.y, cal.m, WEEK_START);
+    while (cells.length % 7) cells.push({ date: null }); // 最後の週の残りも空白のマスで埋める（枠をそろえる）
+    var openHere = 0;
+    cells.forEach(function (c) {
+      if (!c.date) { html += '<div class="cal-d" aria-hidden="true"></div>'; return; } // 月の前後のマス
+      var list = by[c.date], tod = c.date === today ? ' today' : '';
+      // 予約できない日は日付だけ薄く（押せない・状態の文字は出さない）
+      if (!list) { html += '<div class="cal-d off' + tod + '" aria-hidden="true"><span class="n">' + c.day + '</span></div>'; return; }
+      openHere++;
+      var lab = cal.m + '月' + c.day + '日(' + WD.charAt(c.dow) + ') 予約できます。押すと予約の入力に進みます';
+      html += '<button type="button" class="cal-d' + (c.dow === 0 ? ' sun' : c.dow === 6 ? ' sat' : '') + tod + (cal.sel === c.date ? ' sel' : '') + '" data-date="' + c.date + '" aria-label="' + esc(lab) + '">' +
+        '<span class="n">' + c.day + '</span><span class="m">予約可</span></button>';
     });
-    html += '</div><div class="cal-legend"><span><b>予約可</b>＝予約できる日（押すと下に予約のボタンが出ます）</span></div>';
-    // ほかの月の開催（見落とさないように）
-    var months = {};
-    events.forEach(function (e) { var o = ym(e.date); if (ymNum(o) !== ymNum(cal)) months[ymNum(o)] = o; });
-    var more = Object.keys(months).sort().map(function (k) {
-      var o = months[k];
-      return '<button type="button" class="link" data-ym="' + k + '">' + (Number(k) < ymNum(cal) ? '‹ ' : '') + o.m + '月の開催日を見る' + (Number(k) > ymNum(cal) ? ' ›' : '') + '</button>';
+    html += '</div>' + (openHere ? '' : '<p class="cal-none">この月に予約できる日はありません。</p>') +
+      '<p class="cal-legend"><b>予約可</b>＝予約できる日です。押すと、予約の入力に進みます。</p>';
+    // ほかの月の開催日（見落とさないように・前の版と同じ）。予約できる日がある月だけ
+    var months = [];
+    dates.forEach(function (d) { var n = ymNum(ym(d)); if (n !== cur && months.indexOf(n) < 0) months.push(n); });
+    var more = months.map(function (n) {
+      var m = (n - 1) % 12 + 1;
+      return '<button type="button" class="link" data-ym="' + n + '">' + (n < cur ? '‹ ' : '') + m + '月の開催日を見る' + (n > cur ? ' ›' : '') + '</button>';
     }).join('');
     if (more) html += '<div class="cal-more">' + more + '</div>';
     $('cal').innerHTML = html;
     $('cal').classList.remove('hidden');
-    var move = function (n) { var t = cal.y * 12 + (cal.m - 1) + n; cal.y = Math.floor(t / 12); cal.m = t % 12 + 1; renderCalendar(); };
-    $('calPrev').onclick = function () { move(-1); };
-    $('calNext').onclick = function () { move(1); };
-    Array.prototype.forEach.call($('cal').querySelectorAll('[data-ym]'), function (b) {
-      b.onclick = function () { move(Number(b.getAttribute('data-ym')) - ymNum(cal)); };
-    });
-    Array.prototype.forEach.call($('cal').querySelectorAll('[data-date]'), function (b) {
+    var go = function (n) { cal.y = Math.floor((n - 1) / 12); cal.m = (n - 1) % 12 + 1; cal.sel = ''; renderCalendar(); renderPick(); };
+    $('calPrev').onclick = function () { if (cur > min) go(cur - 1); };
+    $('calNext').onclick = function () { if (cur < max) go(cur + 1); };
+    Array.prototype.forEach.call($('cal').querySelectorAll('[data-ym]'), function (b) { b.onclick = function () { go(Number(b.getAttribute('data-ym'))); }; });
+    Array.prototype.forEach.call($('cal').querySelectorAll('button[data-date]'), function (b) {
       b.onclick = function () {
-        var d = b.getAttribute('data-date');
-        cal.sel = cal.sel === d ? '' : d; // もう一度押すと選ぶ前に戻る
-        renderCalendar(); renderPick();
-        // 帯が変わったと分かるように色をつける
-        $('pick').classList.remove('flash'); void $('pick').offsetWidth; $('pick').classList.add('flash');
+        var d = b.getAttribute('data-date'), list = openByDate()[d] || [];
+        if (list.length === 1) { cal.sel = ''; choose(list[0].e); return; } // ふつうは1日1回＝そのまま入力へ
+        cal.sel = d; renderCalendar(); renderPick();
+        scrollToEl($('pick'));
       };
     });
   }
 
-  /*
-   * ---------- 予約へ進むボタン（#pick・1つだけ） ----------
-   * 選ぶ前は「日付を選んでください」、選んだ後はその日の時間・料金と「この日で予約する」
-   */
+  /** 1日に回が2つ以上ある日だけ、その日の時間を選ぶ（ほかの時は何も出さない） */
   function renderPick() {
-    var box = $('pick');
-    if (!events.length) {
+    var box = $('pick'), by = openByDate();
+    if (!Object.keys(by).length) {
       $('events').innerHTML = '<p>いま予約を受け付けている日はありません。</p><p class="muted">次の開催日は Instagram でお知らせします。</p>';
       box.classList.add('hidden');
+      renderResume();
       return;
     }
     $('events').innerHTML = '';
+    var list = cal.sel && by[cal.sel];
+    if (!list || list.length < 2) { cal.sel = ''; box.classList.add('hidden'); box.innerHTML = ''; renderResume(); return; }
+    box.innerHTML = '<div class="p"><b>' + esc(list[0].e.dateLabel) + '</b>　時間を選んでください</div><div class="slots">' +
+      list.map(function (x) {
+        return '<button type="button" class="btn ghost block" data-i="' + x.i + '">' + esc(x.e.start_time) + '〜' + esc(x.e.end_time) + '</button>';
+      }).join('') + '</div>';
     box.classList.remove('hidden');
-    if (cal.sel && !events.some(function (e) { return e.date === cal.sel; })) cal.sel = ''; // 選んだ日が受付を終えたとき
-    var html;
-    if (!cal.sel) {
-      // 選ぶ前は「次の開催」の案内（写真の下の「日にちを選ぶ」と同じボタンを2つ見せない・docs/20 批評 3）
-      var ni = -1; events.some(function (e, i) { if (!e.full) { ni = i; return true; } return false; });
-      var next = events[ni];
-      html = next ? '<div class="p">次の開催 <b>' + esc(next.dateLabel) + '</b> <span class="num">' + esc(next.start_time) + '〜' + esc(next.end_time) + '</span><br>1名 ' + yen(next.price) + '（入場料込み）</div>' +
-          '<button type="button" class="btn" data-i="' + ni + '" aria-label="' + esc(next.dateLabel) + 'の回を予約する">この日で予約する</button>'
-        : '<div class="p"><b>満席です</b><br>ほかの日の開催を Instagram でお知らせします</div>';
-    } else {
-      var list = [];
-      events.forEach(function (e, i) { if (e.date === cal.sel) list.push({ e: e, i: i }); });
-      var row = function (x, many) {
-        var e = x.e;
-        // 狭い画面では日付と時刻の間で折り返す（時刻の途中で切らない）
-        return '<div class="p">' + (many ? '' : '<b>' + esc(e.dateLabel) + '</b> ') + '<b class="num" style="white-space:nowrap">' + esc(e.start_time) + '〜' + esc(e.end_time) + '</b><br>' +
-          (e.full ? '満席です（ほかの日をお選びください）' : '1名 ' + yen(e.price) + '（入場料込み）') + '</div>' +
-          (e.full ? '' : '<button type="button" class="btn" data-i="' + x.i + '" aria-label="' + esc(e.dateLabel + ' ' + e.start_time) + 'の回を予約する">' + (many ? 'この時間で予約する' : 'この日で予約する') + '</button>');
-      };
-      html = list.length === 1 ? row(list[0], false)
-        : '<div class="pick-rows"><div class="p"><b>' + esc(list[0].e.dateLabel) + '</b></div>' + list.map(function (x) { return '<div class="pick-row">' + row(x, true) + '</div>'; }).join('') + '</div>';
-    }
-    box.innerHTML = html;
     Array.prototype.forEach.call(box.querySelectorAll('button[data-i]'), function (b) {
       b.onclick = function () { choose(events[Number(b.getAttribute('data-i'))]); };
     });
-    updatePickBar();
     renderResume();
   }
   /** 決済ページから戻ってきたときなど、入力の途中のご予約があれば続きから */
@@ -1034,13 +990,15 @@ var IMG = {
 
   /* ---------- 最初の表示 ---------- */
   $('toDates').onclick = function (e) { e.preventDefault(); scrollToEl($('dates')); };
-  $('toFirst').onclick = function (e) { e.preventDefault(); scrollToEl($('first')); };
   $('toLookup').onclick = function (e) { e.preventDefault(); scrollToEl($('lookup')); };
   if (window.IMG) $('heroImg').src = IMG.hero_river;
   $('events').innerHTML = UI.loading('開催日を読み込んでいます…');
 
+  // 「はじめての方へ」の「予約ページで日にちを選ぶ」（…#dates）から来たときは、カレンダーが出てから1回だけそこへ（2026-10-30）
+  var toDatesOnce = location.hash === '#dates';
   function applyEvents(list) {
     events = list; renderCalendar(); renderPick(); renderFacts();
+    if (toDatesOnce && events.length) { toDatesOnce = false; setTimeout(function () { scrollToEl($('dates')); }, 50); }
   }
   /** 開催日だけを取り直す（満席・受付終了のあと） */
   function load() {
@@ -1073,7 +1031,10 @@ var IMG = {
     applyEvents(res.data.events);
   });
 
-  /** 写真の下の要点: 場所＋地図・時間・料金・アクセス・駐車場。いくら・何時が最初の画面で分かるように（docs/20 批評 1） */
+  /**
+   * 写真の下の要点: 場所＋地図・時間・料金。いくら・何時が最初の画面で分かるように（docs/20 批評 1）。
+   * アクセス・駐車場は「はじめての方へ」のページへ（カレンダーまでを短く・2026-10-30）
+   */
   function renderFacts() {
     if (!cfg.guide) return;
     var g = cfg.guide;
@@ -1084,9 +1045,8 @@ var IMG = {
       return (s.days ? '<span class="dw">' + esc(s.days) + '</span> ' : '') + '<span class="big num">' + esc(s.time) + '</span>';
     }).join('<br>') + '<br>出入り自由' : '日によって違います<br>カレンダーで確かめてください');
     $('facts').innerHTML = '<div class="f-place"><div><b>場所</b>' + esc(g.venue) + '</div>' + UI.mapLink(g) + '</div>' +
-      (events.length ? '<div><b>時間</b>' + time + '</div><div><b>料金</b>' + price + '</div>' : '') +
-      '<div><b>アクセス</b>' + esc(g.access[0]) + '</div><div><b>駐車場</b>' + esc(g.access[1].replace('駐車場', '')) + '</div>';
-    if (events.length) $('datesIntro').textContent = 'フリータイム（開催時間の中は出入り自由）・1名 ' + yen(minP) + (maxP > minP ? '〜' : '') + '（税込・入場料込み）。日付を押すと、その日の時間が出ます。';
+      (events.length ? '<div><b>時間</b>' + time + '</div><div><b>料金</b>' + price + '</div>' : '');
+    if (events.length) $('datesIntro').textContent = 'フリータイム（開催時間の中は出入り自由）・1名 ' + yen(minP) + (maxP > minP ? '〜' : '') + '（税込・入場料込み）';
   }
   function applyConfig(c) {
     cfg = c;
@@ -1094,14 +1054,8 @@ var IMG = {
     UI.chrome(cfg);
     Bot.start(cfg.turnstileSiteKey);
     renderFacts();
-    var IMG_KEY = { fire: 'f_fire', river: 'f_river', tent: 'f_tent' };
-    $('features').innerHTML = g.features.map(function (f) {
-      var src = window.IMG && IMG[IMG_KEY[f.key]];
-      return '<div class="feature">' + (src ? '<img src="' + src + '" alt="">' : '') + '<div><h3>' + esc(f.title) + '</h3><p>' + esc(f.text) + '</p></div></div>';
-    }).join('');
-    $('guide').innerHTML = UI.guideHtml(g, { title: '持ち物・受付', noPlace: true }); // 場所・アクセスは写真の下にある（二重に出さない）
-    $('rules').innerHTML = g.rules.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('');
-    $('termsLink').href = cfg.termsUrl;
+    // 「はじめての方へ」は別のページ（Apps Script 版でも外のページでも同じ形の URL・2026-10-30）
+    if (cfg.webAppUrl) $('toFirst').href = $('guideLink').href = cfg.webAppUrl + '?page=guide';
     $('policy').innerHTML = cfg.cancelPolicy.map(function (p) { return '<li>' + esc(p) + '</li>'; }).join('');
     // 規約・個人情報は同意の文の中のリンク（特定商取引法の表記はページの下）
     $('termsA').href = cfg.termsUrl; $('privacyA').href = cfg.privacyUrl;
