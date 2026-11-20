@@ -3,7 +3,7 @@
 <head>
 <base target="_top">
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://script.google.com https://script.googleusercontent.com; frame-src https://challenges.cloudflare.com; form-action 'self'; base-uri 'self'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://script.google.com https://script.googleusercontent.com; form-action 'self'; base-uri 'self'; object-src 'none'">
 <style id="noframe">html{display:none}</style>
 <script>if (window.top === window.self) { var nf = document.getElementById('noframe'); nf.parentNode.removeChild(nf); } else { try { window.top.location = window.self.location.href; } catch (e) {} }</script>
 <title>Ten.Ten ｜大阪・能勢のテントサウナ ご予約の確認</title>
@@ -16,19 +16,25 @@
 <meta property="og:image" content="https://tentenyoyaku-alt.github.io/ogp.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
 <script>
 /* build_site.js が差し込む部品: google.script.run の代わりに Apps Script の窓口へ問い合わせる */
 (function () {
   var API = "https://script.google.com/macros/s/AKfycbwDPAECkVr4AIBdcP4IcIjCrW4riUJ3FjDtPyHIHrpxWcA2pbvQnAI-5n0JZfv5NVBdLQ/exec?api=1";
   function call(name, args, h) {
-    fetch(API, { method: 'POST', credentials: 'omit', redirect: 'follow', cache: 'no-store',
+    var done, ac = window.AbortController && new window.AbortController();
+    /* 打ち切り: 管理 360 秒・読む物 30 秒・書く物 60 秒。後から返事が来ても無視する */
+    var t = setTimeout(function () { var e = new Error('timeout'); e.name = 'TimeoutError'; end(h.ng, e); if (ac) ac.abort(); },
+      /^api_admin/.test(name) ? 36e4 : /^api_(get|list)/.test(name) ? 3e4 : 6e4);
+    function end(f, v) { if (done) return; done = 1; clearTimeout(t); if (f) f(v, h.uo); }
+    fetch(API, { method: 'POST', credentials: 'omit', redirect: 'follow', cache: 'no-store', signal: ac && ac.signal,
       headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: name, args: args }) })
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
       .then(function (j) {
-        if (j && Object.prototype.hasOwnProperty.call(j, 'result')) { if (h.ok) h.ok(j.result, h.uo); }
-        else if (h.ng) h.ng(new Error((j && j.error) || '通信に失敗しました'));
+        if (j && Object.prototype.hasOwnProperty.call(j, 'result')) end(h.ok, j.result);
+        else end(h.ng, new Error((j && j.error) || '通信に失敗しました'));
       })
-      .catch(function (e) { if (h.ng) h.ng(e); });
+      .catch(function (e) { end(h.ng, e); });
   }
   function runner(h) {
     return new Proxy({}, { get: function (_, name) {
@@ -173,37 +179,51 @@ var UI = {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
   },
   yen: function (n) { return String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '円'; },
-  /** google.script.run を Promise にする。通信の失敗も { ok:false } で返す */
+  /** google.script.run を Promise に。失敗も { ok:false }（打ち切りは timeout:true） */
   call: function (fn) {
     var args = Array.prototype.slice.call(arguments, 1);
     return new Promise(function (resolve) {
       google.script.run.withSuccessHandler(function (r) { resolve(r || { ok: false, message: '通信に失敗しました。' }); })
-        .withFailureHandler(function () { resolve({ ok: false, message: '通信に失敗しました。電波の良い所で、もう一度お試しください。' }); })[fn].apply(null, args);
+        .withFailureHandler(function (e) { var t = !!e && e.name === 'TimeoutError'; resolve({ ok: false, timeout: t, message: '通信に' + (t ? '時間がかかっています' : '失敗しました') + '。電波の良い所で、もう一度お試しください。' }); })[fn].apply(null, args);
     });
   },
+  /** HASH_PARAMS_V1: ? を土台に、# の中の 名前=値 で上書き（# が勝つ・R3） */
+  params: function (loc) {
+    var P = {}, a = loc.parameter || {}, h = String(loc.hash || '').replace(/^#/, '');
+    // # が %23 に変えられて ? の値に入ってきた時は、そこから後ろを # として読む
+    Object.keys(a).forEach(function (k) { var v = String(a[k]), i = v.indexOf('#'); if (i >= 0) { h = h || v.slice(i + 1); v = v.slice(0, i); } P[k] = v; });
+    if (h.indexOf('=') >= 0) new URLSearchParams(h).forEach(function (v, k) { P[k] = v; });
+    return P;
+  },
+  /** https:// の URL だけ通す（ほかは空） */
+  httpsUrl: function (u) { return /^https:\/\/[^\s"'<>]+$/.test(u || '') ? u : ''; },
   /**
-   * URL の鍵（予約確認の t・マイページの k・管理ログインの login）を、読んだあとで URL から消す（点検 M2・2026-10-28）。
-   * 履歴・共有の端末・配信元の記録に鍵を残さないため。再読み込みできるように、鍵はこのタブの中（sessionStorage）にだけ残す。
-   * Apps Script の枠の中で開いたときは URL を変えない（枠の外の URL は変えられない）
+   * URL の鍵（t・k・login など）を読んだあとで ? と # から消す（点検 M2・R3）。再読み込み用にタブ（sessionStorage）にだけ残す（login は残さない）。
+   * 鍵が無ければ # は触らない。Apps Script の枠の中では URL を変えない
    */
   hideParams: function (P, keys) {
-    var store = 'p:' + location.pathname, has = keys.some(function (k) { return !!P[k]; });
+    var store = 'p:' + location.pathname + ':' + (P.page || ''), has = keys.some(function (k) { return !!P[k]; }), ok = false;
     try {
       if (has) {
         var keep = {};
         Object.keys(P).forEach(function (k) { if (k !== 'login') keep[k] = P[k]; });
         sessionStorage.setItem(store, JSON.stringify(keep));
+        ok = true;
       } else {
         var s = JSON.parse(sessionStorage.getItem(store) || '{}');
-        // 別の予約のページを開いたときは使わない（URL に残っている値と食い違えば戻さない）
+        // URL の値と食い違えば戻さない（別の予約）
         var same = Object.keys(P).every(function (k) { return !(k in s) || s[k] === P[k]; });
         if (same) Object.keys(s).forEach(function (k) { if (!P[k]) P[k] = s[k]; });
       }
-    } catch (e) { /* 保存できない端末でも、表示はできる */ }
+    } catch (e) { /* 保存できない端末でも表示はできる */ }
     try {
-      var q = new URLSearchParams(location.search), changed = false;
-      keys.forEach(function (k) { if (q.has(k)) { q.delete(k); changed = true; } });
-      if (changed && window.top === window.self) history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q.toString() : '') + location.hash);
+      var q = new URLSearchParams(location.search), h = location.hash, hq = new URLSearchParams(h.slice(1)), changed = false;
+      keys.forEach(function (k) {
+        if (!ok && k !== 'login') return; // タブに残せない端末では URL に残す（再読み込みで開けるように）
+        if (q.has(k)) { q.delete(k); changed = true; }
+        if (h.indexOf('=') > 0 && hq.has(k)) { hq.delete(k); changed = true; h = hq.toString() ? '#' + hq : ''; }
+      });
+      if (changed && window.top === window.self) history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + h);
     } catch (e) { /* 古いブラウザは何もしない */ }
     return P;
   },
@@ -358,7 +378,13 @@ var UI = {
 <script>
   var P = {}, cfg = {};
   var $ = UI.$, esc = UI.esc;
-  function homeBtn() { return cfg.webAppUrl ? '<a class="btn ghost block" href="' + esc(cfg.webAppUrl) + '" target="_top">予約ページへ</a>' : ''; }
+  function homeBtn() { var h = UI.httpsUrl(cfg.webAppUrl); return h ? '<a class="btn ghost block" href="' + esc(h) + '" target="_top">予約ページへ</a>' : ''; }
+  // リンクの # から後ろ（鍵）が欠けた時の案内（サーバーには問い合わせない・R3）
+  function lostKey() {
+    var h = UI.httpsUrl(cfg.webAppUrl);
+    $('main').innerHTML = '<div class="notice err">リンクの最後の部分が欠けている可能性があります。メールのリンクをもう一度開くか、予約ページの「予約の確認」から、ご予約のメールアドレスで確かめてください。</div>' +
+      (h ? '<a class="btn block" href="' + esc(h + '#lookup') + '" target="_top">予約の確認へ</a>' : '');
+  }
   function render(v) {
     var html = '<div class="rv">' + UI.reservationHtml(v, cfg.guide) + (v.canRequestCancel ? UI.cancelBoxHtml(0) : '') + '</div>';
     if (v.upcoming && cfg.guide) html += UI.guideHtml(cfg.guide);
@@ -375,9 +401,10 @@ var UI = {
   }
   $('main').innerHTML = UI.loading();
   google.script.url.getLocation(function (loc) {
-    P = UI.hideParams(loc.parameter || {}, ['t']);
+    P = UI.hideParams(UI.params(loc), ['t']);
     UI.call('api_getPublicConfig').then(function (c) {
       if (c.ok) { cfg = c.data; UI.chrome(cfg); }
+      if (P.id && !P.t) { lostKey(); return; }
       UI.call('api_getReservation', P.id, P.t).then(function (res) {
         if (!res.ok) { $('main').innerHTML = '<div class="notice err">' + esc(res.message) + '</div>' + homeBtn(); return; }
         render(res.data);
