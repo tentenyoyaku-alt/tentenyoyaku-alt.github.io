@@ -3,7 +3,7 @@
 <head>
 <base target="_top">
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://script.google.com https://script.googleusercontent.com; frame-src https://challenges.cloudflare.com; form-action 'self'; base-uri 'self'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://script.google.com https://script.googleusercontent.com; form-action 'self'; base-uri 'self'; object-src 'none'">
 <style id="noframe">html{display:none}</style>
 <script>if (window.top === window.self) { var nf = document.getElementById('noframe'); nf.parentNode.removeChild(nf); } else { try { window.top.location = window.self.location.href; } catch (e) {} }</script>
 <title>Ten.Ten ｜大阪・能勢のテントサウナ 予約管理</title>
@@ -16,19 +16,25 @@
 <meta property="og:image" content="https://tentenyoyaku-alt.github.io/ogp.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
 <script>
 /* build_site.js が差し込む部品: google.script.run の代わりに Apps Script の窓口へ問い合わせる */
 (function () {
   var API = "https://script.google.com/macros/s/AKfycbwDPAECkVr4AIBdcP4IcIjCrW4riUJ3FjDtPyHIHrpxWcA2pbvQnAI-5n0JZfv5NVBdLQ/exec?api=1";
   function call(name, args, h) {
-    fetch(API, { method: 'POST', credentials: 'omit', redirect: 'follow', cache: 'no-store',
+    var done, ac = window.AbortController && new window.AbortController();
+    /* 打ち切り: 管理 360 秒・読む物 30 秒・書く物 60 秒。後から返事が来ても無視する */
+    var t = setTimeout(function () { var e = new Error('timeout'); e.name = 'TimeoutError'; end(h.ng, e); if (ac) ac.abort(); },
+      /^api_admin/.test(name) ? 36e4 : /^api_(get|list)/.test(name) ? 3e4 : 6e4);
+    function end(f, v) { if (done) return; done = 1; clearTimeout(t); if (f) f(v, h.uo); }
+    fetch(API, { method: 'POST', credentials: 'omit', redirect: 'follow', cache: 'no-store', signal: ac && ac.signal,
       headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: name, args: args }) })
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
       .then(function (j) {
-        if (j && Object.prototype.hasOwnProperty.call(j, 'result')) { if (h.ok) h.ok(j.result, h.uo); }
-        else if (h.ng) h.ng(new Error((j && j.error) || '通信に失敗しました'));
+        if (j && Object.prototype.hasOwnProperty.call(j, 'result')) end(h.ok, j.result);
+        else end(h.ng, new Error((j && j.error) || '通信に失敗しました'));
       })
-      .catch(function (e) { if (h.ng) h.ng(e); });
+      .catch(function (e) { end(h.ng, e); });
   }
   function runner(h) {
     return new Proxy({}, { get: function (_, name) {
@@ -173,37 +179,51 @@ var UI = {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
   },
   yen: function (n) { return String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '円'; },
-  /** google.script.run を Promise にする。通信の失敗も { ok:false } で返す */
+  /** google.script.run を Promise に。失敗も { ok:false }（打ち切りは timeout:true） */
   call: function (fn) {
     var args = Array.prototype.slice.call(arguments, 1);
     return new Promise(function (resolve) {
       google.script.run.withSuccessHandler(function (r) { resolve(r || { ok: false, message: '通信に失敗しました。' }); })
-        .withFailureHandler(function () { resolve({ ok: false, message: '通信に失敗しました。電波の良い所で、もう一度お試しください。' }); })[fn].apply(null, args);
+        .withFailureHandler(function (e) { var t = !!e && e.name === 'TimeoutError'; resolve({ ok: false, timeout: t, message: '通信に' + (t ? '時間がかかっています' : '失敗しました') + '。電波の良い所で、もう一度お試しください。' }); })[fn].apply(null, args);
     });
   },
+  /** HASH_PARAMS_V1: ? を土台に、# の中の 名前=値 で上書き（# が勝つ・R3） */
+  params: function (loc) {
+    var P = {}, a = loc.parameter || {}, h = String(loc.hash || '').replace(/^#/, '');
+    // # が %23 に変えられて ? の値に入ってきた時は、そこから後ろを # として読む
+    Object.keys(a).forEach(function (k) { var v = String(a[k]), i = v.indexOf('#'); if (i >= 0) { h = h || v.slice(i + 1); v = v.slice(0, i); } P[k] = v; });
+    if (h.indexOf('=') >= 0) new URLSearchParams(h).forEach(function (v, k) { P[k] = v; });
+    return P;
+  },
+  /** https:// の URL だけ通す（ほかは空） */
+  httpsUrl: function (u) { return /^https:\/\/[^\s"'<>]+$/.test(u || '') ? u : ''; },
   /**
-   * URL の鍵（予約確認の t・マイページの k・管理ログインの login）を、読んだあとで URL から消す（点検 M2・2026-10-28）。
-   * 履歴・共有の端末・配信元の記録に鍵を残さないため。再読み込みできるように、鍵はこのタブの中（sessionStorage）にだけ残す。
-   * Apps Script の枠の中で開いたときは URL を変えない（枠の外の URL は変えられない）
+   * URL の鍵（t・k・login など）を読んだあとで ? と # から消す（点検 M2・R3）。再読み込み用にタブ（sessionStorage）にだけ残す（login は残さない）。
+   * 鍵が無ければ # は触らない。Apps Script の枠の中では URL を変えない
    */
   hideParams: function (P, keys) {
-    var store = 'p:' + location.pathname, has = keys.some(function (k) { return !!P[k]; });
+    var store = 'p:' + location.pathname + ':' + (P.page || ''), has = keys.some(function (k) { return !!P[k]; }), ok = false;
     try {
       if (has) {
         var keep = {};
         Object.keys(P).forEach(function (k) { if (k !== 'login') keep[k] = P[k]; });
         sessionStorage.setItem(store, JSON.stringify(keep));
+        ok = true;
       } else {
         var s = JSON.parse(sessionStorage.getItem(store) || '{}');
-        // 別の予約のページを開いたときは使わない（URL に残っている値と食い違えば戻さない）
+        // URL の値と食い違えば戻さない（別の予約）
         var same = Object.keys(P).every(function (k) { return !(k in s) || s[k] === P[k]; });
         if (same) Object.keys(s).forEach(function (k) { if (!P[k]) P[k] = s[k]; });
       }
-    } catch (e) { /* 保存できない端末でも、表示はできる */ }
+    } catch (e) { /* 保存できない端末でも表示はできる */ }
     try {
-      var q = new URLSearchParams(location.search), changed = false;
-      keys.forEach(function (k) { if (q.has(k)) { q.delete(k); changed = true; } });
-      if (changed && window.top === window.self) history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q.toString() : '') + location.hash);
+      var q = new URLSearchParams(location.search), h = location.hash, hq = new URLSearchParams(h.slice(1)), changed = false;
+      keys.forEach(function (k) {
+        if (!ok && k !== 'login') return; // タブに残せない端末では URL に残す（再読み込みで開けるように）
+        if (q.has(k)) { q.delete(k); changed = true; }
+        if (h.indexOf('=') > 0 && hq.has(k)) { hq.delete(k); changed = true; h = hq.toString() ? '#' + hq : ''; }
+      });
+      if (changed && window.top === window.self) history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + h);
     } catch (e) { /* 古いブラウザは何もしない */ }
     return P;
   },
@@ -563,7 +583,7 @@ var UI = {
     EVENT_TEMPLATE: 'ひな形を変更', EVENT_CREATE: '開催回を作成', EVENT_CREATE_MANY: '開催回をまとめて作成', EVENT_CREATE_MANY_PUBLISH: '開催回をまとめて作成・公開',
     EVENT_UPDATE: '開催回を編集', EVENT_PUBLISH: '公開', EVENT_UNPUBLISH: '非公開に', EVENT_DUPLICATE: '開催回を複製', EVENT_CANCEL: '開催中止',
     HOLDS_RELEASE: '支払い待ちを解除', REFUND_EXECUTE: '返金を実行', CANCEL_APPROVE: 'キャンセルを承認', CANCEL_REJECT: 'キャンセルを却下',
-    CHECKIN: '受付', CHECKIN_UNDO: '受付を取り消し', TEST_NOTICE: '知らせのテスト' };
+    CHECKIN: '受付', CHECKIN_UNDO: '受付を取り消し', TEST_NOTICE: '知らせのテスト', SESSIONS_REVOKE: 'ほかの端末のログインを切る' };
   function st(kind, v) {
     if (!v) return '';
     var label = (kind === '予約' ? RS_L : kind === '支払い' ? PS_L : RF_L)[v] || v;
@@ -1233,7 +1253,8 @@ var UI = {
   }
   // メールを送った結果（QUEUED＝今日の上限で送信待ち も日本語で・見直し B9）
   var MAIL_ST = { SENT: '送信しました', DRYRUN: '記録しました（テストのため送信なし）', FAILED: '送信に失敗しました',
-    QUEUED: '送信待ちです（今日の送信の上限のため、枠が戻りしだい自動で送ります）', SKIPPED: '送りませんでした（宛先がありません）' };
+    QUEUED: '送信待ちです（今日の送信の上限のため、枠が戻りしだい自動で送ります）', SKIPPED: '送りませんでした（宛先が無いか、今日の送信の枠を残すため）',
+    THROTTLED: '送りませんでした（同じ知らせが続いたため。30 分ほどあけてください）', THROTTLED_DAY: '送りませんでした（同じ知らせは今日の上限に達しました）' };
   function bindResend(root) {
     each(root, 'data-resend', function (id, b) {
       if (!confirm('確認メールを ' + (b.getAttribute('data-mail') || 'お客様') + ' に再送します。前に送った確認のリンクは使えなくなります。')) return;
@@ -1526,6 +1547,8 @@ var UI = {
             '<button type="button" class="btn ghost small" data-role="' + esc(a.email) + '" data-to="' + (a.role === 'MASTER' ? 'STAFF' : 'MASTER') + '">' + (a.role === 'MASTER' ? '一般管理者にする' : '主管理者にする') + '</button>' +
             '<button type="button" class="btn danger-ghost small" data-del="' + esc(a.email) + '">削除</button></div>') + '</div>';
         }).join('') +
+        // 置き忘れた端末などを切る（押した端末は残る・R3 C4）
+        '<p style="margin-top:16px"><button type="button" class="btn ghost small" id="adRevoke">ほかの端末のログインをすべて切る</button></p>' +
         '<h2>管理者を追加</h2><div class="field"><label for="adEmail">メールアドレス<span class="req">必須</span></label><input id="adEmail" type="email" autocomplete="off"></div>' +
         '<div class="field"><label for="adRole">権限</label><select id="adRole"><option value="STAFF">一般管理者（予約・受付・申請の処理）</option><option value="MASTER">主管理者（返金・中止・管理者の変更も）</option></select></div>' +
         '<button type="button" class="btn" id="adAdd">追加</button>' +
@@ -1547,6 +1570,11 @@ var UI = {
             (d.status === 'SENT' ? '送りました。受信箱を確かめてください（迷惑メールに入ることもあります）。' : d.status === 'QUEUED' ? esc(MAIL_ST.QUEUED) : '送れませんでした（' + esc(MAIL_ST[d.status] || d.status) + '）。「要対応」を確かめてください。') +
             '<br>宛先: ' + esc(d.to.join('、')) + (d.cc.length ? '<br>CC: ' + esc(d.cc.join('、')) : '') + '</div>';
         });
+      };
+      $('adRevoke').onclick = function () {
+        if (!confirm('この端末以外の、すべての管理者のログインを切ります。\n切られた人はメールでログインし直します。よろしいですか？')) return;
+        var b = $('adRevoke'); busy(b);
+        admin('api_adminRevokeSessions').then(function (r) { after(r, r.ok ? r.data.revoked + ' 件のログインを切りました' : '', b); });
       };
       $('adAdd').onclick = function () {
         var em = $('adEmail').value.trim();
@@ -1588,7 +1616,7 @@ var UI = {
   /* ---------- 起動 ---------- */
   google.script.url.getLocation(function (loc) {
     // ログインのリンクの鍵は1回だけ使える。読んだらすぐ URL から消す（タブにも残さない・点検 M2）
-    var p = UI.hideParams(loc.parameter || {}, ['login']);
+    var p = UI.hideParams(UI.params(loc), ['login']);
     var saved = loadSaved();
     if (p.login) {
       // 新しいログインのリンクを優先する。使用済み（再読み込み）なら、保存してあるログインで続ける
